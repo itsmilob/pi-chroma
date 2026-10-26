@@ -9,6 +9,7 @@ export default function ViewMosaic({
   activeMatchIndex,
   onSelectDigitAt,
   jumpTargetIndex,
+  offset = 0,
 }) {
   const containerRef = useRef(null);
   const canvasRef = useRef(null);
@@ -438,11 +439,11 @@ export default function ViewMosaic({
             <div className="text-slate-400 text-[11px]">
               Index:{' '}
               <span className="text-purple-300 font-bold">
-                #{hoveredCell.index}
+                #{(hoveredCell.index + offset).toLocaleString()}
               </span>{' '}
-              {hoveredCell.index === 0
+              {hoveredCell.index + offset === 0
                 ? '(Integer 3)'
-                : `(Decimal #${hoveredCell.index})`}
+                : `(Decimal #${(hoveredCell.index + offset).toLocaleString()})`}
             </div>
             <div className="text-slate-500 text-[10px]">
               Grid: ({hoveredCell.col}, {hoveredCell.row})

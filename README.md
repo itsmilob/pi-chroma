@@ -6,7 +6,7 @@ A fast, interactive web application exploring **1,000,001 digits of Pi** rendere
 
 ## ✨ Features
 
-- **1,000,001 Certified Digits of Pi**: Pre-bundled with instantaneous startup and offline support.
+- **Up to 1,000,000,000 Digits of Pi**: 1,000,001 digits are bundled for instant startup; load a billion-digit file (see below) and search, statistics and audio cover every digit, while the visual views show a 1M-digit window you can slide anywhere across it.
 - **Custom Color Assignment (0–9)**:
   - Interactive color pickers for each number 0 through 9.
   - Curated themes: *Spectral Rainbow*, *Cyberpunk Neon*, *Solar Sunset*, *Ocean Abyssal*, *Thermal Magma*, *Retro Terminal*, *Pastel Dream*, *Deep Forest*, *Monochrome*.
@@ -37,3 +37,19 @@ npm run dev
 ```
 
 Open `http://localhost:5173/` in your browser.
+
+### Going to 1 billion digits
+
+The billion digits are too big for the repo, so you supply them once:
+
+1. Get the digits. [y-cruncher](https://numberworld.org/y-cruncher/) computes them locally:
+   `./y-cruncher custom pi -dec:1b -compress:0 -o ./out` (needs ~6 GB of RAM, or use its swap mode).
+2. Pack them (about 500 MB, two digits per byte):
+   `node scripts/pack-pi.mjs out/<the-digits-file>.txt public/pi-1b.pi4`
+3. `npm run dev`. The app loads `public/pi-1b.pi4` automatically.
+
+Or skip steps 2-3 and pick either the packed `.pi4` or the raw text file with
+**Load digits file** in the app. Nothing is uploaded; it is read in your browser.
+
+On a laptop a full-store search takes about 2 seconds, and so does the full-store
+statistics pass.

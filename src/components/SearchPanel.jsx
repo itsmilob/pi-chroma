@@ -13,6 +13,8 @@ export default function SearchPanel({
   onNavigateMatch,
   onJumpToMatch,
   colors,
+  isSearching = false,
+  totalDigits = 0,
 }) {
   const [showBirthdayPicker, setShowBirthdayPicker] = useState(false);
   const [selectedDate, setSelectedDate] = useState('');
@@ -193,9 +195,11 @@ export default function SearchPanel({
               }`}
             />
             <span className="text-xs text-slate-300">
-              {searchResult.totalMatches > 0 ? (
+              {isSearching ? (
+                <span className="text-slate-400">Searching {totalDigits.toLocaleString()} digits...</span>
+              ) : searchResult.totalMatches > 0 ? (
                 <>
-                  Found <strong className="text-white font-mono">{searchResult.totalMatches.toLocaleString()}</strong>{' '}
+                  Found <strong className="text-white font-mono">{searchResult.totalMatches.toLocaleString()}{searchResult.truncated ? '+' : ''}</strong>{' '}
                   occurrences
                   {searchResult.firstIndex !== -1 && (
                     <span className="text-slate-400 ml-1">
@@ -208,14 +212,14 @@ export default function SearchPanel({
                 </>
               ) : (
                 <span className="text-rose-400">
-                  No match found in local 1,000,000 digits
+                  No match found in the {totalDigits.toLocaleString()} loaded digits
                 </span>
               )}
             </span>
           </div>
 
           {/* Deep Search Trigger */}
-          {searchResult.totalMatches === 0 && !deepSearchResult && (
+          {!isSearching && searchResult.totalMatches === 0 && !deepSearchResult && totalDigits < 200_000_000 && (
             <button
               onClick={handleDeepSearch}
               disabled={isSearchingDeep}

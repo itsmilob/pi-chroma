@@ -12,6 +12,13 @@ import {
   Sparkles,
 } from 'lucide-react';
 
+function compactCount(n) {
+  if (n >= 999_999_000) return '1B';
+  if (n >= 1_000_000) return `${Math.round(n / 1_000_000)}M`;
+  if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
+  return String(n);
+}
+
 export default function Header({
   activeMode,
   setActiveMode,
@@ -48,7 +55,7 @@ export default function Header({
                 Pi <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-400 to-amber-400">Chroma</span>
               </h1>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-500/10 text-purple-300 border border-purple-500/20">
-                1M Digits
+                {compactCount(totalDigits)} Digits
               </span>
             </div>
             <p className="text-xs text-slate-400">

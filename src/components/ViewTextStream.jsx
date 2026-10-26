@@ -8,6 +8,8 @@ export default function ViewTextStream({
   searchResult,
   activeMatchIndex,
   jumpTargetIndex,
+  offset = 0,
+  onJumpToIndex,
 }) {
   const [pageSize, setPageSize] = useState(1000); // 500, 1000, 2500, 5000
   const [currentPage, setCurrentPage] = useState(0);
@@ -49,9 +51,9 @@ export default function ViewTextStream({
   const handleJumpSubmit = (e) => {
     e.preventDefault();
     const val = parseInt(jumpInput, 10);
-    if (!isNaN(val) && val >= 0 && val < totalDigits) {
-      setCurrentPage(Math.floor(val / pageSize));
-    }
+    if (isNaN(val) || val < 0) return;
+    if (onJumpToIndex) onJumpToIndex(val);
+    else if (val < totalDigits) setCurrentPage(Math.floor(val / pageSize));
   };
 
   // Group the page into lines of 50 digits
@@ -66,6 +68,8 @@ export default function ViewTextStream({
     }
     return result;
   }, [pageDigits, startIndex]);
+
+  const gutterWidth = Math.max(6, String(offset + totalDigits).length);
 
   return (
     <div className="flex flex-col rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl overflow-hidden mb-6">
@@ -188,8 +192,10 @@ export default function ViewTextStream({
             return (
               <div key={lineStartIndex} className="flex items-start gap-4 hover:bg-slate-900/40 p-1 rounded-lg transition-colors">
                 {/* Gutter Line Index */}
-                <div className="w-16 sm:w-20 shrink-0 text-right text-[11px] text-slate-600 select-none pt-0.5 font-bold">
-                  {lineStartIndex === 0 ? 'π = 3.' : `#${lineStartIndex.toString().padStart(6, '0')}`}
+                <div className="w-24 sm:w-28 shrink-0 text-right text-[11px] text-slate-600 select-none pt-0.5 font-bold">
+                  {lineStartIndex + offset === 0
+                    ? 'π = 3.'
+                    : `#${(lineStartIndex + offset).toString().padStart(gutterWidth, '0')}`}
                 </div>
 
                 {/* Digits content */}
@@ -225,7 +231,7 @@ export default function ViewTextStream({
                       <React.Fragment key={globalIdx}>
                         {displayStyle === 'badges' ? (
                           <span
-                            title={`Digit ${char} (Index #${globalIdx})`}
+                            title={`Digit ${char} (Index #${(globalIdx + offset).toLocaleString()})`}
                             style={{
                               backgroundColor: isDimmed ? '#1e293b' : `${color}25`,
                               borderColor: isDimmed ? '#334155' : color,
@@ -243,7 +249,7 @@ export default function ViewTextStream({
                           </span>
                         ) : (
                           <span
-                            title={`Digit ${char} (Index #${globalIdx})`}
+                            title={`Digit ${char} (Index #${(globalIdx + offset).toLocaleString()})`}
                             style={{
                               color: isDimmed ? '#334155' : color,
                               textShadow: !isDimmed ? `0 0 8px ${color}55` : 'none',

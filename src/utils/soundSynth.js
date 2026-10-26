@@ -112,7 +112,7 @@ class PiSynth {
         return;
       }
 
-      const digit = piDigits[this.currentDigitIndex];
+      const digit = piDigits.charAt(this.currentDigitIndex);
       const duration = Math.max(0.04, 1 / this.speed);
       this.playDigitNote(digit, duration);
 

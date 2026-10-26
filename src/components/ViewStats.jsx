@@ -1,30 +1,37 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BarChart3, CheckCircle2, TrendingUp, Grid, Loader2 } from 'lucide-react';
-import { computeDigitStats } from '../utils/piSearch';
+import { computeStoreStats } from '../utils/piSearch';
 
-export default function ViewStats({ piDigits, colors, isLoadingFullPi }) {
-  const [sampleLimit, setSampleLimit] = useState(1000000);
+const SAMPLE_STEPS = [1000, 10000, 100000, 1000000, 10000000, 100000000];
 
-  const effectiveLimit = Math.min(sampleLimit, piDigits.length);
+const EMPTY_STATS = {
+  stats: {
+    totalDigits: 0,
+    frequencies: Array.from({ length: 10 }, (_, digit) => ({ digit, count: 0, percentage: 0, diff: 0 })),
+    chiSquare: 0,
+    isStatisticallyNormal: true,
+  },
+  transitions: Array.from({ length: 10 }, () => new Array(10).fill(0)),
+};
 
-  const stats = useMemo(() => {
-    return computeDigitStats(piDigits, effectiveLimit);
-  }, [piDigits, effectiveLimit]);
+export default function ViewStats({ store, colors, isLoadingFullPi }) {
+  const [sampleLimit, setSampleLimit] = useState(0); // 0 = every loaded digit
+  const [result, setResult] = useState(null);
 
-  // Compute 10x10 transition matrix: count how often digit A is followed by digit B
-  const transitionMatrix = useMemo(() => {
-    const matrix = Array.from({ length: 10 }, () => new Array(10).fill(0));
-    const limit = Math.min(sampleLimit, piDigits.length - 1);
+  const effectiveLimit = sampleLimit === 0 ? store.length : Math.min(sampleLimit, store.length);
 
-    for (let i = 0; i < limit; i++) {
-      const from = piDigits.charCodeAt(i) - 48;
-      const to = piDigits.charCodeAt(i + 1) - 48;
-      if (from >= 0 && from <= 9 && to >= 0 && to <= 9) {
-        matrix[from][to]++;
-      }
-    }
-    return matrix;
-  }, [piDigits, sampleLimit]);
+  // One pass over the sample gives frequencies and the transition matrix
+  useEffect(() => {
+    const ctrl = new AbortController();
+    setResult(null);
+    computeStoreStats(store, effectiveLimit, { signal: ctrl.signal }).then((r) => {
+      if (r && !ctrl.signal.aborted) setResult(r);
+    });
+    return () => ctrl.abort();
+  }, [store, effectiveLimit]);
+
+  const isComputing = result === null;
+  const { stats, transitions: transitionMatrix } = result ?? EMPTY_STATS;
 
   const maxFreq = Math.max(...stats.frequencies.map((f) => f.count), 1);
   const expectedPerDigit = Math.round(stats.totalDigits / 10);
@@ -54,20 +61,31 @@ export default function ViewStats({ piDigits, colors, isLoadingFullPi }) {
             onChange={(e) => setSampleLimit(Number(e.target.value))}
             className="bg-slate-950 border border-slate-700 text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 font-mono"
           >
-            <option value={1000}>First 1,000 digits (~100 / digit)</option>
-            <option value={10000}>First 10,000 digits (~1,000 / digit)</option>
-            <option value={100000}>First 100,000 digits (~10,000 / digit)</option>
-            <option value={1000000}>Full 1,000,000 digits (~100,000 / digit)</option>
+            {SAMPLE_STEPS.filter((n) => n < store.length).map((n) => (
+              <option key={n} value={n}>
+                First {n.toLocaleString()} digits (~{(n / 10).toLocaleString()} / digit)
+              </option>
+            ))}
+            <option value={0}>
+              All {store.length.toLocaleString()} loaded digits (~{Math.round(store.length / 10).toLocaleString()} / digit)
+            </option>
           </select>
         </div>
       </div>
+
+      {isComputing && (
+        <div className="mb-6 p-3 rounded-xl bg-indigo-950/30 border border-indigo-800/40 text-xs text-indigo-300 flex items-center gap-2">
+          <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+          <span>Counting {effectiveLimit.toLocaleString()} digits...</span>
+        </div>
+      )}
 
       {/* Loading banner if 1M digits still downloading */}
       {isLoadingFullPi && (
         <div className="mb-6 p-3 rounded-xl bg-amber-950/30 border border-amber-800/40 text-xs text-amber-300 flex items-center gap-2">
           <Loader2 className="w-4 h-4 animate-spin shrink-0" />
           <span>
-            Loading full 1,000,001 digits dataset in background... Showing analysis for current available digits ({piDigits.length.toLocaleString()} digits).
+            Loading full 1,000,001 digits dataset in background... Showing analysis for current available digits ({store.length.toLocaleString()} digits).
           </span>
         </div>
       )}

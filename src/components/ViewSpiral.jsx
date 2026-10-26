@@ -7,6 +7,7 @@ export default function ViewSpiral({
   isolatedDigit,
   searchResult,
   activeMatchIndex,
+  offset = 0,
 }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
@@ -372,7 +373,7 @@ export default function ViewSpiral({
               <span className="font-bold text-slate-100">Digit: {hoveredDot.digit}</span>
             </div>
             <div className="text-slate-400 text-[11px]">
-              Spiral Position: <span className="text-purple-300 font-bold">#{hoveredDot.index.toLocaleString()}</span>
+              Spiral Position: <span className="text-purple-300 font-bold">#{(hoveredDot.index + offset).toLocaleString()}</span>
             </div>
           </div>
         )}

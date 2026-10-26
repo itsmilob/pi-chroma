@@ -2,3 +2,8 @@ node_modules
 dist
 .DS_Store
 *.local
+
+# Large digit files (see README)
+public/pi-1b.pi4
+/data/
+*.pi4

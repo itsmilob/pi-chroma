@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Volume2, VolumeX, Play, Pause, Music, Sliders, FastForward } from 'lucide-react';
 import { piSynth } from '../utils/soundSynth';
 
-export default function AudioSonifier({ piDigits, colors, activeMatchIndex, searchResult }) {
+export default function AudioSonifier({ piDigits, colors, activeMatchIndex, searchResult, defaultStartIndex = 0 }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState(12); // notes per second
   const [scale, setScale] = useState('pentatonic');
@@ -33,7 +33,7 @@ export default function AudioSonifier({ piDigits, colors, activeMatchIndex, sear
       piSynth.stop();
       setIsPlaying(false);
     } else {
-      let startIdx = 0;
+      let startIdx = defaultStartIndex;
       if (searchResult && searchResult.matches.length > 0 && activeMatchIndex >= 0) {
         startIdx = searchResult.matches[activeMatchIndex].index;
       }
@@ -95,7 +95,7 @@ export default function AudioSonifier({ piDigits, colors, activeMatchIndex, sear
                 Digit: {currentPlayState.digit}
               </div>
               <div className="text-slate-500 text-[10px]">
-                Index: #{currentPlayState.index}
+                Index: #{currentPlayState.index.toLocaleString()}
               </div>
             </div>
           </div>
