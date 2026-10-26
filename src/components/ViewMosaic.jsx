@@ -1,6 +1,10 @@
 import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
 import { ZoomIn, ZoomOut, Maximize2, Move, Eye, Info, Sparkles } from 'lucide-react';
 
+// A 1M-digit window at the default 200 columns is ~30,000px tall, so the
+// floor has to be low enough to fit all of it on screen.
+const MIN_ZOOM = 0.01;
+
 export default function ViewMosaic({
   piDigits,
   colors,
@@ -275,7 +279,7 @@ export default function ViewMosaic({
   const handleWheel = (e) => {
     e.preventDefault();
     const zoomFactor = e.deltaY < 0 ? 1.15 : 0.87;
-    setZoom((z) => Math.min(5, Math.max(0.2, z * zoomFactor)));
+    setZoom((z) => Math.min(5, Math.max(MIN_ZOOM, z * zoomFactor)));
   };
 
   const handleResetView = () => {
@@ -365,14 +369,14 @@ export default function ViewMosaic({
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-lg p-1">
             <button
-              onClick={() => setZoom((z) => Math.max(0.2, z * 0.85))}
+              onClick={() => setZoom((z) => Math.max(MIN_ZOOM, z * 0.85))}
               className="p-1 rounded hover:bg-slate-800 text-slate-300"
               title="Zoom Out"
             >
               <ZoomOut className="w-3.5 h-3.5" />
             </button>
             <span className="font-mono text-[11px] px-1 text-slate-400 min-w-[42px] text-center">
-              {Math.round(zoom * 100)}%
+              {zoom < 0.1 ? (zoom * 100).toFixed(1) : Math.round(zoom * 100)}%
             </span>
             <button
               onClick={() => setZoom((z) => Math.min(5, z * 1.15))}
