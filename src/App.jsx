@@ -14,10 +14,11 @@ import { COLOR_PALETTES } from './constants/palettes';
 import { INITIAL_PI } from './constants/initialPi';
 import { PiStore } from './data/piStore';
 import { searchStore, EMPTY_RESULT } from './utils/piSearch';
+import { MAX_CELLS } from './utils/aggregate';
 
-// The visual views draw this many digits at a time; the store behind them
-// (search, stats, audio) covers every loaded digit.
-const WINDOW_SIZE = 1_000_000;
+// The visual views draw at most MAX_CELLS cells at a time, each standing for
+// `perCell` digits, so a window spans MAX_CELLS * perCell digits. The store
+// behind them (search, stats, audio) always covers every loaded digit.
 const WINDOW_STEP = 1000;
 
 export default function App() {
@@ -27,12 +28,17 @@ export default function App() {
   const [isLoadingFullPi, setIsLoadingFullPi] = useState(true);
   const [bigLoad, setBigLoad] = useState({ active: false, progress: 0, error: null });
 
-  // Which slice of the store the views are showing
+  // Zoom-out scale: digits per cell ('fit' picks the smallest that fits the
+  // whole store in one window), how a cell is colored, and which slice of the
+  // store the views are showing.
+  const [scaleOption, setScaleOption] = useState('fit');
+  const [colorMode, setColorMode] = useState('blend');
+  const [enhance, setEnhance] = useState(true);
   const [windowStart, setWindowStart] = useState(0);
-  const windowSize = Math.min(WINDOW_SIZE, store.length);
+  const perCell = scaleOption === 'fit' ? Math.max(1, Math.ceil(store.length / MAX_CELLS)) : scaleOption;
+  const windowSize = Math.min(store.length, MAX_CELLS * perCell);
   const maxWindowStart = Math.max(0, store.length - windowSize);
   const start = Math.min(windowStart, maxWindowStart);
-  const piDigits = useMemo(() => store.slice(start, start + windowSize), [store, start, windowSize]);
 
   // Active view mode: 'mosaic' | 'stream' | 'spiral' | 'stats'
   const [activeMode, setActiveMode] = useState('mosaic');
@@ -47,7 +53,7 @@ export default function App() {
   const [activeMatchIndex, setActiveMatchIndex] = useState(0);
   const [searchResult, setSearchResult] = useState(EMPTY_RESULT);
   const [isSearching, setIsSearching] = useState(false);
-  const [jumpTargetIndex, setJumpTargetIndex] = useState(null); // relative to the window
+  const [jump, setJump] = useState({ index: null, seq: 0 }); // global digit index to scroll to
 
   // Modals & Panels
   const [isAudioVisible, setIsAudioVisible] = useState(false);
@@ -123,7 +129,7 @@ export default function App() {
       );
       setStore(loaded);
       setWindowStart(0);
-      setJumpTargetIndex(null);
+      setJump({ index: null, seq: 0 });
       setBigLoad({ active: false, progress: 0, error: null });
     } catch (err) {
       setBigLoad({ active: false, progress: 0, error: err.message });
@@ -186,7 +192,7 @@ export default function App() {
         next = Math.max(0, Math.min(maxWindowStart, centered));
       }
       setWindowStart(next);
-      setJumpTargetIndex(index - next);
+      setJump((prev) => ({ index, seq: prev.seq + 1 }));
     },
     [windowSize, maxWindowStart]
   );
@@ -199,15 +205,6 @@ export default function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchResult]);
-
-  // Matches re-based to the visible window for the views (may fall outside it)
-  const viewSearchResult = useMemo(
-    () => ({
-      ...searchResult,
-      matches: searchResult.matches.map((m) => ({ ...m, index: m.index - start })),
-    }),
-    [searchResult, start]
-  );
 
   const handleNavigateMatch = useCallback(
     (delta) => {
@@ -291,42 +288,55 @@ export default function App() {
           onChangeStart={(next) => setWindowStart(Math.max(0, Math.min(maxWindowStart, next)))}
           onLoadFile={handleLoadFile}
           load={bigLoad}
+          perCell={perCell}
+          scaleOption={scaleOption}
+          onScaleChange={setScaleOption}
+          colorMode={colorMode}
+          onColorModeChange={setColorMode}
+          enhance={enhance}
+          onEnhanceChange={setEnhance}
         />
 
         {/* Main View Area based on Mode */}
         <main className="flex-1">
           {activeMode === 'mosaic' && (
             <ViewMosaic
-              piDigits={piDigits}
-              offset={start}
+              store={store}
+              start={start}
+              windowSize={windowSize}
+              perCell={perCell}
+              colorMode={colorMode}
+              enhance={enhance}
               colors={colors}
               isolatedDigit={isolatedDigit}
-              searchResult={viewSearchResult}
+              searchResult={searchResult}
               activeMatchIndex={activeMatchIndex}
-              jumpTargetIndex={jumpTargetIndex}
+              jump={jump}
             />
           )}
 
           {activeMode === 'stream' && (
             <ViewTextStream
-              piDigits={piDigits}
-              offset={start}
+              store={store}
               onJumpToIndex={handleJumpToIndex}
               colors={colors}
               isolatedDigit={isolatedDigit}
-              searchResult={viewSearchResult}
+              searchResult={searchResult}
               activeMatchIndex={activeMatchIndex}
-              jumpTargetIndex={jumpTargetIndex}
+              jump={jump}
             />
           )}
 
           {activeMode === 'spiral' && (
             <ViewSpiral
-              piDigits={piDigits}
-              offset={start}
+              store={store}
+              start={start}
+              perCell={perCell}
+              colorMode={colorMode}
+              enhance={enhance}
               colors={colors}
               isolatedDigit={isolatedDigit}
-              searchResult={viewSearchResult}
+              searchResult={searchResult}
               activeMatchIndex={activeMatchIndex}
             />
           )}
@@ -359,8 +369,13 @@ export default function App() {
       <ExportModal
         isOpen={isExportOpen}
         onClose={() => setIsExportOpen(false)}
-        piDigits={piDigits}
+        store={store}
+        start={start}
+        perCell={perCell}
+        colorMode={colorMode}
+        enhance={enhance}
         colors={colors}
+        isolatedDigit={isolatedDigit}
         activePaletteName={activePaletteName}
       />
 

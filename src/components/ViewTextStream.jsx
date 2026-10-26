@@ -2,13 +2,12 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Hash, Copy, Check, Sparkles } from 'lucide-react';
 
 export default function ViewTextStream({
-  piDigits,
+  store,
   colors,
   isolatedDigit,
   searchResult,
   activeMatchIndex,
-  jumpTargetIndex,
-  offset = 0,
+  jump,
   onJumpToIndex,
 }) {
   const [pageSize, setPageSize] = useState(1000); // 500, 1000, 2500, 5000
@@ -18,20 +17,30 @@ export default function ViewTextStream({
   const [copied, setCopied] = useState(false);
   const [jumpInput, setJumpInput] = useState('');
 
-  const totalDigits = piDigits.length;
+  const totalDigits = store.length;
   const totalPages = Math.ceil(totalDigits / pageSize);
 
-  // Jump to index if changed from outside (e.g. search click)
+  // Follow jumps from outside (search results, "Go to digit")
   useEffect(() => {
-    if (jumpTargetIndex !== null && jumpTargetIndex >= 0) {
-      const page = Math.floor(jumpTargetIndex / pageSize);
-      setCurrentPage(page);
+    if (jump && jump.index !== null && jump.index >= 0) {
+      setCurrentPage(Math.floor(jump.index / pageSize));
     }
-  }, [jumpTargetIndex, pageSize]);
+    // Only an actual jump should move the page, not a page-size change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jump?.seq]);
+
+  // Keep the same digits on screen when the page size changes
+  const pageSizeRef = useRef(pageSize);
+  useEffect(() => {
+    if (pageSizeRef.current !== pageSize) {
+      setCurrentPage((page) => Math.floor((page * pageSizeRef.current) / pageSize));
+      pageSizeRef.current = pageSize;
+    }
+  }, [pageSize]);
 
   const startIndex = currentPage * pageSize;
   const endIndex = Math.min(totalDigits, startIndex + pageSize);
-  const pageDigits = useMemo(() => piDigits.slice(startIndex, endIndex), [piDigits, startIndex, endIndex]);
+  const pageDigits = useMemo(() => store.slice(startIndex, endIndex), [store, startIndex, endIndex]);
 
   // Extract matches that fall in this current page
   const pageMatches = useMemo(() => {
@@ -51,9 +60,10 @@ export default function ViewTextStream({
   const handleJumpSubmit = (e) => {
     e.preventDefault();
     const val = parseInt(jumpInput, 10);
-    if (isNaN(val) || val < 0) return;
+    if (isNaN(val) || val < 0 || val >= totalDigits) return;
+    // Jumping through the app also moves the mosaic; this page follows via `jump`
     if (onJumpToIndex) onJumpToIndex(val);
-    else if (val < totalDigits) setCurrentPage(Math.floor(val / pageSize));
+    else setCurrentPage(Math.floor(val / pageSize));
   };
 
   // Group the page into lines of 50 digits
@@ -69,7 +79,7 @@ export default function ViewTextStream({
     return result;
   }, [pageDigits, startIndex]);
 
-  const gutterWidth = Math.max(6, String(offset + totalDigits).length);
+  const gutterWidth = Math.max(6, String(totalDigits).length);
 
   return (
     <div className="flex flex-col rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl overflow-hidden mb-6">
@@ -193,9 +203,9 @@ export default function ViewTextStream({
               <div key={lineStartIndex} className="flex items-start gap-4 hover:bg-slate-900/40 p-1 rounded-lg transition-colors">
                 {/* Gutter Line Index */}
                 <div className="w-24 sm:w-28 shrink-0 text-right text-[11px] text-slate-600 select-none pt-0.5 font-bold">
-                  {lineStartIndex + offset === 0
+                  {lineStartIndex === 0
                     ? 'π = 3.'
-                    : `#${(lineStartIndex + offset).toString().padStart(gutterWidth, '0')}`}
+                    : `#${lineStartIndex.toString().padStart(gutterWidth, '0')}`}
                 </div>
 
                 {/* Digits content */}
@@ -231,7 +241,7 @@ export default function ViewTextStream({
                       <React.Fragment key={globalIdx}>
                         {displayStyle === 'badges' ? (
                           <span
-                            title={`Digit ${char} (Index #${(globalIdx + offset).toLocaleString()})`}
+                            title={`Digit ${char} (Index #${globalIdx.toLocaleString()})`}
                             style={{
                               backgroundColor: isDimmed ? '#1e293b' : `${color}25`,
                               borderColor: isDimmed ? '#334155' : color,
@@ -249,7 +259,7 @@ export default function ViewTextStream({
                           </span>
                         ) : (
                           <span
-                            title={`Digit ${char} (Index #${(globalIdx + offset).toLocaleString()})`}
+                            title={`Digit ${char} (Index #${globalIdx.toLocaleString()})`}
                             style={{
                               color: isDimmed ? '#334155' : color,
                               textShadow: !isDimmed ? `0 0 8px ${color}55` : 'none',

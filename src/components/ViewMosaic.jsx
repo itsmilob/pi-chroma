@@ -1,19 +1,23 @@
 import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
-import { ZoomIn, ZoomOut, Maximize2, Move, Eye, Info, Sparkles } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize2, Move, Loader2 } from 'lucide-react';
+import { aggregateCounts, cellCount, colorizeCells, packedToCss } from '../utils/aggregate';
 
-// A 1M-digit window at the default 200 columns is ~30,000px tall, so the
+// A 1M-cell grid at the default 200 columns is ~30,000px tall, so the zoom
 // floor has to be low enough to fit all of it on screen.
 const MIN_ZOOM = 0.01;
 
 export default function ViewMosaic({
-  piDigits,
+  store,
+  start,
+  windowSize,
+  perCell,
+  colorMode,
+  enhance,
   colors,
   isolatedDigit,
   searchResult,
   activeMatchIndex,
-  onSelectDigitAt,
-  jumpTargetIndex,
-  offset = 0,
+  jump,
 }) {
   const containerRef = useRef(null);
   const canvasRef = useRef(null);
@@ -32,100 +36,104 @@ export default function ViewMosaic({
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef({ x: 0, y: 0 });
 
-  // Pre-parse hex colors to 32-bit uint integers for high-speed direct canvas buffer drawing
-  const parsedUint32Colors = useMemo(() => {
-    return colors.map((hex) => {
-      // #RRGGBB -> little endian 0xAABBGGRR
-      const r = parseInt(hex.slice(1, 3), 16);
-      const g = parseInt(hex.slice(3, 5), 16);
-      const b = parseInt(hex.slice(5, 7), 16);
-      return (255 << 24) | (b << 16) | (g << 8) | r;
-    });
-  }, [colors]);
+  // Digit counts per cell for the current window and scale. Counting is the
+  // slow part (a billion digits take ~2s), so it runs once per window/scale and
+  // everything else (palette, isolation, color mode) recolors from the counts.
+  const cellsWanted = cellCount(start, start + windowSize, perCell);
+  const [agg, setAgg] = useState(null); // { counts, cells, start, perCell }
+  const [isCounting, setIsCounting] = useState(false);
 
-  const dimmedUint32Colors = useMemo(() => {
-    return colors.map((hex, digit) => {
-      if (isolatedDigit !== null && isolatedDigit !== digit) {
-        // Dimmed version (dark desaturated)
-        return (255 << 24) | (30 << 16) | (30 << 8) | 30;
+  useEffect(() => {
+    const ctrl = new AbortController();
+    setIsCounting(true);
+    aggregateCounts(store, start, perCell, cellsWanted, { signal: ctrl.signal }).then((counts) => {
+      if (counts && !ctrl.signal.aborted) {
+        setAgg({ counts, cells: cellsWanted, start, perCell });
+        setIsCounting(false);
       }
-      return parsedUint32Colors[digit];
     });
-  }, [colors, isolatedDigit, parsedUint32Colors]);
+    return () => ctrl.abort();
+  }, [store, start, perCell, cellsWanted]);
 
-  const totalDigits = piDigits.length;
-  const rows = Math.ceil(totalDigits / columns);
+  const aggPerCell = agg?.perCell ?? perCell;
+  const cellData = useMemo(() => {
+    if (!agg) return null;
+    return colorizeCells(agg.counts, agg.cells, colors, {
+      mode: agg.perCell > 1 ? colorMode : 'blend',
+      enhance: agg.perCell > 1 && enhance,
+      isolated: isolatedDigit,
+    });
+  }, [agg, colors, colorMode, enhance, isolatedDigit]);
+
+  const cells = agg?.cells ?? 0;
+  const rows = Math.ceil(cells / columns);
   const canvasWidth = columns * pixelSize;
   const canvasHeight = rows * pixelSize;
 
-  // React to jumpTargetIndex
+  // Scroll to a cell when asked to jump (search results, "Go to digit")
   useEffect(() => {
-    if (jumpTargetIndex !== null && jumpTargetIndex >= 0 && jumpTargetIndex < totalDigits) {
-      const col = jumpTargetIndex % columns;
-      const row = Math.floor(jumpTargetIndex / columns);
-      const targetX = col * pixelSize;
-      const targetY = row * pixelSize;
-
-      if (containerRef.current) {
-        const containerRect = containerRef.current.getBoundingClientRect();
-        setPan({
-          x: -(targetX * zoom - containerRect.width / 2 + (pixelSize * zoom) / 2),
-          y: -(targetY * zoom - containerRect.height / 2 + (pixelSize * zoom) / 2),
-        });
-      }
-    }
-  }, [jumpTargetIndex, columns, pixelSize, zoom, totalDigits]);
+    if (!jump || jump.index === null || !containerRef.current) return;
+    const cell = Math.floor((jump.index - start) / perCell);
+    if (cell < 0 || cell >= cellsWanted) return;
+    const targetX = (cell % columns) * pixelSize;
+    const targetY = Math.floor(cell / columns) * pixelSize;
+    const containerRect = containerRef.current.getBoundingClientRect();
+    setPan({
+      x: -(targetX * zoom - containerRect.width / 2 + (pixelSize * zoom) / 2),
+      y: -(targetY * zoom - containerRect.height / 2 + (pixelSize * zoom) / 2),
+    });
+    // Only an actual jump should move the view, not zoom or window changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jump?.seq]);
 
   // Render Canvas
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !agg || !cellData) return;
     const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) return;
 
     canvas.width = canvasWidth;
     canvas.height = canvasHeight;
 
-    // Fast path: if 1px square pixels, use direct ImageData Uint32Array buffer (sub-millisecond for 1M pixels!)
-    if (pixelSize === 1 && shape === 'square') {
-      const imgData = ctx.createImageData(canvasWidth, canvasHeight);
-      const buf = new Uint32Array(imgData.data.buffer);
-      const colorsMap = isolatedDigit !== null ? dimmedUint32Colors : parsedUint32Colors;
+    const drawText = showDigitsOnCells && pixelSize >= 12 && agg.perCell === 1;
 
-      for (let i = 0; i < totalDigits; i++) {
-        const d = piDigits.charCodeAt(i) - 48; // '0' is 48
-        if (d >= 0 && d <= 9) {
-          buf[i] = colorsMap[d];
-        }
-      }
-      ctx.putImageData(imgData, 0, 0);
+    if (shape === 'square' && !drawText) {
+      // Fast path: one pixel per cell in an ImageData, scaled up without
+      // smoothing. A million fillRect calls would take seconds.
+      const grid = document.createElement('canvas');
+      grid.width = columns;
+      grid.height = Math.max(1, rows);
+      const gctx = grid.getContext('2d');
+      const image = gctx.createImageData(grid.width, grid.height);
+      new Uint32Array(image.data.buffer).set(cellData.colors);
+      gctx.putImageData(image, 0, 0);
+      ctx.fillStyle = '#030712';
+      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(grid, 0, 0, canvasWidth, grid.height * pixelSize);
     } else {
-      // Standard path with shapes / cell sizing
       ctx.fillStyle = '#030712';
       ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
       const radius = shape === 'circle' ? pixelSize / 2 : shape === 'rounded' ? Math.max(1, pixelSize * 0.25) : 0;
-      const drawText = showDigitsOnCells && pixelSize >= 12;
-
       if (drawText) {
         ctx.font = `bold ${Math.floor(pixelSize * 0.55)}px 'JetBrains Mono', monospace`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
       }
 
-      for (let i = 0; i < totalDigits; i++) {
-        const col = i % columns;
-        const row = Math.floor(i / columns);
-        const x = col * pixelSize;
-        const y = row * pixelSize;
-
-        const d = piDigits.charCodeAt(i) - 48;
-        if (d < 0 || d > 9) continue;
-
-        const isDimmed = isolatedDigit !== null && isolatedDigit !== d;
-        const color = isDimmed ? '#1e293b' : colors[d];
-
-        ctx.fillStyle = color;
+      const cssCache = new Map();
+      for (let i = 0; i < cells; i++) {
+        const x = (i % columns) * pixelSize;
+        const y = Math.floor(i / columns) * pixelSize;
+        const packed = cellData.colors[i];
+        let css = cssCache.get(packed);
+        if (css === undefined) {
+          css = packedToCss(packed);
+          cssCache.set(packed, css);
+        }
+        ctx.fillStyle = css;
 
         if (shape === 'square') {
           ctx.fillRect(x, y, pixelSize, pixelSize);
@@ -133,71 +141,78 @@ export default function ViewMosaic({
           ctx.beginPath();
           ctx.arc(x + radius, y + radius, radius * 0.9, 0, Math.PI * 2);
           ctx.fill();
-        } else if (shape === 'rounded') {
+        } else {
           drawRoundedRect(ctx, x + 0.5, y + 0.5, pixelSize - 1, pixelSize - 1, radius);
           ctx.fill();
         }
 
-        if (drawText && !isDimmed) {
-          ctx.fillStyle = getContrastColor(colors[d]);
-          ctx.fillText(d.toString(), x + pixelSize / 2, y + pixelSize / 2);
+        if (drawText) {
+          const d = cellData.dominant[i];
+          if (isolatedDigit === null || isolatedDigit === d) {
+            ctx.fillStyle = getContrastColor(colors[d]);
+            ctx.fillText(d.toString(), x + pixelSize / 2, y + pixelSize / 2);
+          }
         }
-      }
-
-      if (showGridLines && pixelSize >= 4) {
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
-        ctx.lineWidth = 0.5;
-        ctx.beginPath();
-        for (let c = 0; c <= columns; c++) {
-          ctx.moveTo(c * pixelSize, 0);
-          ctx.lineTo(c * pixelSize, canvasHeight);
-        }
-        for (let r = 0; r <= rows; r++) {
-          ctx.moveTo(0, r * pixelSize);
-          ctx.lineTo(canvasWidth, r * pixelSize);
-        }
-        ctx.stroke();
       }
     }
 
-    // Highlight search pattern matches directly on canvas!
+    if (showGridLines && pixelSize >= 4) {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      for (let c = 0; c <= columns; c++) {
+        ctx.moveTo(c * pixelSize, 0);
+        ctx.lineTo(c * pixelSize, canvasHeight);
+      }
+      for (let r = 0; r <= rows; r++) {
+        ctx.moveTo(0, r * pixelSize);
+        ctx.lineTo(canvasWidth, r * pixelSize);
+      }
+      ctx.stroke();
+    }
+
+    // Highlight search matches. Zoomed out, a match is smaller than a cell, so
+    // it gets a ring around its cell to stay visible.
     if (searchResult && searchResult.pattern && searchResult.matches.length > 0) {
       const pLen = searchResult.pattern.length;
-
-      // Draw bounding box / outlines for all matches
+      const zoomedOut = agg.perCell > 1;
       ctx.lineWidth = Math.max(2, pixelSize * 0.3);
 
       searchResult.matches.forEach((match, idx) => {
         const isActive = idx === activeMatchIndex;
+        const first = Math.floor((match.index - agg.start) / agg.perCell);
+        const last = Math.floor((match.index + pLen - 1 - agg.start) / agg.perCell);
+        if (last < 0 || first >= cells) return;
+
         ctx.strokeStyle = isActive ? '#FFFFFF' : '#EC4899';
         ctx.fillStyle = isActive ? 'rgba(255, 255, 255, 0.35)' : 'rgba(236, 72, 153, 0.25)';
 
-        for (let step = 0; step < pLen; step++) {
-          const charIdx = match.index + step;
-          if (charIdx >= totalDigits) break;
-
-          const col = charIdx % columns;
-          const row = Math.floor(charIdx / columns);
-          const x = col * pixelSize;
-          const y = row * pixelSize;
-
+        for (let c = Math.max(0, first); c <= Math.min(cells - 1, last); c++) {
+          const x = (c % columns) * pixelSize;
+          const y = Math.floor(c / columns) * pixelSize;
           ctx.fillRect(x, y, pixelSize, pixelSize);
           ctx.strokeRect(x, y, pixelSize, pixelSize);
         }
 
-        // If it's the active match, draw a prominent spotlight target
-        if (isActive) {
-          const firstCol = match.index % columns;
-          const firstRow = Math.floor(match.index / columns);
-          const fx = firstCol * pixelSize;
-          const fy = firstRow * pixelSize;
-
+        if (zoomedOut && first >= 0 && first < cells) {
+          const cx = (first % columns) * pixelSize + pixelSize / 2;
+          const cy = Math.floor(first / columns) * pixelSize + pixelSize / 2;
+          ctx.save();
+          ctx.lineWidth = isActive ? 4 : 2;
+          ctx.strokeStyle = isActive ? '#FDE047' : '#EC4899';
+          ctx.beginPath();
+          ctx.arc(cx, cy, isActive ? 18 : 9, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        } else if (isActive && first >= 0 && first < cells) {
+          // Spotlight the first digit of the active match
+          const firstCol = first % columns;
           ctx.save();
           ctx.strokeStyle = '#FDE047';
           ctx.lineWidth = Math.max(3, pixelSize * 0.4);
           ctx.strokeRect(
-            fx - 2,
-            fy - 2,
+            firstCol * pixelSize - 2,
+            Math.floor(first / columns) * pixelSize - 2,
             Math.min(pLen, columns - firstCol) * pixelSize + 4,
             pixelSize + 4
           );
@@ -206,9 +221,12 @@ export default function ViewMosaic({
       });
     }
   }, [
-    piDigits,
+    agg,
+    cellData,
     colors,
     columns,
+    rows,
+    cells,
     pixelSize,
     shape,
     showDigitsOnCells,
@@ -216,11 +234,8 @@ export default function ViewMosaic({
     isolatedDigit,
     searchResult,
     activeMatchIndex,
-    dimmedUint32Colors,
-    parsedUint32Colors,
     canvasWidth,
     canvasHeight,
-    totalDigits,
   ]);
 
   // Mouse interaction: Hover inspection & tooltip
@@ -236,22 +251,23 @@ export default function ViewMosaic({
       }
 
       const canvas = canvasRef.current;
-      if (!canvas) return;
+      if (!canvas || !agg || !cellData) return;
       const rect = canvas.getBoundingClientRect();
-      const clientX = (e.clientX - rect.left) / zoom;
-      const clientY = (e.clientY - rect.top) / zoom;
-
-      const col = Math.floor(clientX / pixelSize);
-      const row = Math.floor(clientY / pixelSize);
+      const col = Math.floor((e.clientX - rect.left) / zoom / pixelSize);
+      const row = Math.floor((e.clientY - rect.top) / zoom / pixelSize);
 
       if (col >= 0 && col < columns && row >= 0 && row < rows) {
         const index = row * columns + col;
-        if (index < totalDigits) {
-          const digit = piDigits[index];
+        if (index < agg.cells) {
+          const digitStart = agg.start + index * agg.perCell;
+          const digitEnd = Math.min(store.length, digitStart + agg.perCell);
           setHoveredCell({
             index,
-            digit,
-            color: colors[parseInt(digit, 10)],
+            digitStart,
+            digitEnd,
+            digit: cellData.dominant[index],
+            counts: Array.from(agg.counts.subarray(index * 10, index * 10 + 10)),
+            color: packedToCss(cellData.colors[index]),
             col,
             row,
             clientX: e.clientX,
@@ -262,7 +278,7 @@ export default function ViewMosaic({
       }
       setHoveredCell(null);
     },
-    [isDragging, zoom, pixelSize, columns, rows, totalDigits, piDigits, colors]
+    [isDragging, zoom, pixelSize, columns, rows, agg, cellData, store]
   );
 
   const handleMouseDown = (e) => {
@@ -429,29 +445,57 @@ export default function ViewMosaic({
               top: `${hoveredCell.clientY + 16}px`,
             }}
           >
-            <div className="flex items-center gap-2 mb-1">
-              <span
-                className="w-4 h-4 rounded-full flex items-center justify-center font-bold text-white shadow-sm"
-                style={{ backgroundColor: hoveredCell.color }}
-              >
-                {hoveredCell.digit}
-              </span>
-              <span className="font-bold text-slate-100">
-                Digit: {hoveredCell.digit}
-              </span>
-            </div>
-            <div className="text-slate-400 text-[11px]">
-              Index:{' '}
-              <span className="text-purple-300 font-bold">
-                #{(hoveredCell.index + offset).toLocaleString()}
-              </span>{' '}
-              {hoveredCell.index + offset === 0
-                ? '(Integer 3)'
-                : `(Decimal #${(hoveredCell.index + offset).toLocaleString()})`}
-            </div>
+            {hoveredCell.digitEnd - hoveredCell.digitStart === 1 ? (
+              <>
+                <div className="flex items-center gap-2 mb-1">
+                  <span
+                    className="w-4 h-4 rounded-full flex items-center justify-center font-bold text-white shadow-sm"
+                    style={{ backgroundColor: hoveredCell.color }}
+                  >
+                    {hoveredCell.digit}
+                  </span>
+                  <span className="font-bold text-slate-100">Digit: {hoveredCell.digit}</span>
+                </div>
+                <div className="text-slate-400 text-[11px]">
+                  Index:{' '}
+                  <span className="text-purple-300 font-bold">#{hoveredCell.digitStart.toLocaleString()}</span>{' '}
+                  {hoveredCell.digitStart === 0
+                    ? '(Integer 3)'
+                    : `(Decimal #${hoveredCell.digitStart.toLocaleString()})`}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="w-4 h-4 rounded shadow-sm" style={{ backgroundColor: hoveredCell.color }} />
+                  <span className="font-bold text-slate-100">
+                    {(hoveredCell.digitEnd - hoveredCell.digitStart).toLocaleString()} digits
+                  </span>
+                </div>
+                <div className="text-slate-400 text-[11px]">
+                  <span className="text-purple-300 font-bold">#{hoveredCell.digitStart.toLocaleString()}</span> to{' '}
+                  <span className="text-purple-300 font-bold">#{(hoveredCell.digitEnd - 1).toLocaleString()}</span>
+                </div>
+                <div className="text-slate-400 text-[10px] mt-1 grid grid-cols-5 gap-x-2">
+                  {hoveredCell.counts.map((count, d) => (
+                    <span key={d}>
+                      <span style={{ color: colors[d] }}>{d}</span>{' '}
+                      {((count / (hoveredCell.digitEnd - hoveredCell.digitStart)) * 100).toFixed(1)}%
+                    </span>
+                  ))}
+                </div>
+              </>
+            )}
             <div className="text-slate-500 text-[10px]">
               Grid: ({hoveredCell.col}, {hoveredCell.row})
             </div>
+          </div>
+        )}
+
+        {isCounting && (
+          <div className="absolute top-3 left-3 bg-slate-900/90 border border-slate-700 rounded-lg px-2.5 py-1 text-[11px] text-slate-300 flex items-center gap-2 pointer-events-none">
+            <Loader2 className="w-3 h-3 animate-spin text-purple-400" />
+            <span>Counting digits...</span>
           </div>
         )}
 
@@ -463,7 +507,7 @@ export default function ViewMosaic({
 
         <div className="absolute bottom-3 right-3 bg-slate-900/80 backdrop-blur-sm border border-slate-800 rounded-lg px-2.5 py-1 text-[11px] text-slate-400 font-mono pointer-events-none">
           <span>
-            Canvas: {canvasWidth}×{canvasHeight}px ({totalDigits.toLocaleString()} digits)
+            Canvas: {canvasWidth}×{canvasHeight}px ({cells.toLocaleString()} cells, {(cells * aggPerCell).toLocaleString()} digits)
           </span>
         </div>
       </div>

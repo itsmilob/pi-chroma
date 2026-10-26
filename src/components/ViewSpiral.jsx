@@ -1,18 +1,22 @@
 import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
-import { ZoomIn, ZoomOut, Maximize2, Disc, Eye, Sparkles, Sliders } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize2, Disc, Eye, Sparkles, Sliders, Loader2 } from 'lucide-react';
+import { MAX_CELLS, aggregateCounts, cellCount, colorizeCells, packedToCss } from '../utils/aggregate';
 
 export default function ViewSpiral({
-  piDigits,
+  store,
+  start,
+  perCell,
+  colorMode,
+  enhance,
   colors,
   isolatedDigit,
   searchResult,
   activeMatchIndex,
-  offset = 0,
 }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
 
-  const [digitCount, setDigitCount] = useState(25000); // 5k, 10k, 25k, 50k, 100k, 200k
+  const [digitCount, setDigitCount] = useState(25000); // points; 0 = every point of the window
   const [dotSize, setDotSize] = useState(3.5);
   const [spacing, setSpacing] = useState(1.8);
   const [spiralType, setSpiralType] = useState('archimedes'); // 'archimedes' or 'fermat'
@@ -26,9 +30,37 @@ export default function ViewSpiral({
   // Store coordinates of dots for hover detection
   const dotCoordsRef = useRef([]);
 
+  // Each point stands for `perCell` digits. Counting runs once per
+  // start/scale/point count; recoloring (palette, isolation) reuses the counts.
+  const available = Math.min(MAX_CELLS, cellCount(start, store.length, perCell));
+  const pointsWanted = digitCount === 0 ? available : Math.min(digitCount, available);
+  const [agg, setAgg] = useState(null); // { counts, cells, start, perCell }
+  const [isCounting, setIsCounting] = useState(false);
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    setIsCounting(true);
+    aggregateCounts(store, start, perCell, pointsWanted, { signal: ctrl.signal }).then((counts) => {
+      if (counts && !ctrl.signal.aborted) {
+        setAgg({ counts, cells: pointsWanted, start, perCell });
+        setIsCounting(false);
+      }
+    });
+    return () => ctrl.abort();
+  }, [store, start, perCell, pointsWanted]);
+
+  const cellData = useMemo(() => {
+    if (!agg) return null;
+    return colorizeCells(agg.counts, agg.cells, colors, {
+      mode: agg.perCell > 1 ? colorMode : 'blend',
+      enhance: agg.perCell > 1 && enhance,
+      isolated: isolatedDigit,
+    });
+  }, [agg, colors, colorMode, enhance, isolatedDigit]);
+
   // Calculate auto-scale factor so spiral NEVER cuts off
   const autoScaleFactor = useMemo(() => {
-    const count = Math.min(digitCount, piDigits.length);
+    const count = agg?.cells ?? 0;
     if (count <= 0) return 1;
 
     let maxR = 100;
@@ -40,11 +72,11 @@ export default function ViewSpiral({
     }
     // Canvas viewport radius is ~440px
     return maxR > 0 ? 440 / maxR : 1;
-  }, [digitCount, piDigits.length, spacing, spiralType]);
+  }, [agg, spacing, spiralType]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !agg || !cellData) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
@@ -60,25 +92,26 @@ export default function ViewSpiral({
 
     const centerX = width / 2;
     const centerY = height / 2;
-    const count = Math.min(digitCount, piDigits.length);
+    const count = agg.cells;
 
     const coords = [];
     const goldenAngle = Math.PI * (3 - Math.sqrt(5)); // ~137.5 degrees
 
-    // Set of match indices
+    // Points that hold part of a match (a point may cover many digits)
     const matchIndicesMap = new Set();
-    let activeMatchFirstIdx = -1;
-    let activeMatchLength = 0;
+    let activeFirstPoint = -1;
+    let activeLastPoint = -2;
 
     if (searchResult && searchResult.pattern && searchResult.matches.length > 0) {
-      activeMatchLength = searchResult.pattern.length;
+      const pLen = searchResult.pattern.length;
       searchResult.matches.forEach((m, idx) => {
+        const first = Math.floor((m.index - agg.start) / agg.perCell);
+        const last = Math.floor((m.index + pLen - 1 - agg.start) / agg.perCell);
         if (idx === activeMatchIndex) {
-          activeMatchFirstIdx = m.index;
+          activeFirstPoint = first;
+          activeLastPoint = last;
         }
-        for (let s = 0; s < activeMatchLength; s++) {
-          matchIndicesMap.add(m.index + s);
-        }
+        for (let c = Math.max(0, first); c <= Math.min(count - 1, last); c++) matchIndicesMap.add(c);
       });
     }
 
@@ -89,6 +122,7 @@ export default function ViewSpiral({
       dotSize * (autoFit ? Math.min(1.2, Math.max(0.4, scale * 1.8)) : 1)
     );
 
+    const cssCache = new Map();
     for (let i = 0; i < count; i++) {
       let r, theta;
       if (spiralType === 'fermat') {
@@ -105,12 +139,8 @@ export default function ViewSpiral({
 
       coords.push({ x, y, index: i });
 
-      const d = piDigits.charCodeAt(i) - 48;
-      if (d < 0 || d > 9) continue;
-
-      const isDimmed = isolatedDigit !== null && isolatedDigit !== d;
       const isMatch = matchIndicesMap.has(i);
-      const isActiveMatch = i >= activeMatchFirstIdx && i < activeMatchFirstIdx + activeMatchLength;
+      const isActiveMatch = i >= activeFirstPoint && i <= activeLastPoint;
 
       ctx.beginPath();
       if (isActiveMatch) {
@@ -125,7 +155,13 @@ export default function ViewSpiral({
         ctx.arc(x, y, effectiveDotSize * 1.8, 0, Math.PI * 2);
         ctx.fill();
       } else {
-        ctx.fillStyle = isDimmed ? '#1e293b' : colors[d];
+        const packed = cellData.colors[i];
+        let css = cssCache.get(packed);
+        if (css === undefined) {
+          css = packedToCss(packed);
+          cssCache.set(packed, css);
+        }
+        ctx.fillStyle = css;
         ctx.arc(x, y, effectiveDotSize / 2, 0, Math.PI * 2);
         ctx.fill();
       }
@@ -148,10 +184,8 @@ export default function ViewSpiral({
     ctx.fillText('3.', centerX, centerY);
     ctx.restore();
   }, [
-    piDigits,
-    colors,
-    isolatedDigit,
-    digitCount,
+    agg,
+    cellData,
     dotSize,
     spacing,
     spiralType,
@@ -187,11 +221,13 @@ export default function ViewSpiral({
         const dx = dot.x - clientX;
         const dy = dot.y - clientY;
         if (dx * dx + dy * dy < threshold * threshold) {
-          const digit = piDigits[dot.index];
+          const digitStart = agg.start + dot.index * agg.perCell;
           found = {
             index: dot.index,
-            digit,
-            color: colors[parseInt(digit, 10)],
+            digitStart,
+            digitEnd: Math.min(store.length, digitStart + agg.perCell),
+            digit: cellData.dominant[dot.index],
+            color: packedToCss(cellData.colors[dot.index]),
             clientX: e.clientX,
             clientY: e.clientY,
           };
@@ -200,7 +236,7 @@ export default function ViewSpiral({
       }
       setHoveredDot(found);
     },
-    [isDragging, zoom, dotSize, piDigits, colors]
+    [isDragging, zoom, dotSize, agg, cellData, store]
   );
 
   const handleMouseDown = (e) => {
@@ -244,7 +280,7 @@ export default function ViewSpiral({
           </div>
 
           <div className="flex items-center gap-1.5">
-            <span className="text-slate-400 font-medium">Digits:</span>
+            <span className="text-slate-400 font-medium">Points:</span>
             <select
               value={digitCount}
               onChange={(e) => setDigitCount(Number(e.target.value))}
@@ -256,6 +292,8 @@ export default function ViewSpiral({
               <option value={50000}>50,000</option>
               <option value={100000}>100,000</option>
               <option value={200000}>200,000</option>
+              <option value={500000}>500,000</option>
+              <option value={0}>Whole window (up to 1M)</option>
             </select>
           </div>
 
@@ -363,18 +401,43 @@ export default function ViewSpiral({
               top: `${hoveredDot.clientY + 16}px`,
             }}
           >
-            <div className="flex items-center gap-2 mb-1">
-              <span
-                className="w-4 h-4 rounded-full flex items-center justify-center font-bold text-white shadow-sm"
-                style={{ backgroundColor: hoveredDot.color }}
-              >
-                {hoveredDot.digit}
-              </span>
-              <span className="font-bold text-slate-100">Digit: {hoveredDot.digit}</span>
-            </div>
-            <div className="text-slate-400 text-[11px]">
-              Spiral Position: <span className="text-purple-300 font-bold">#{(hoveredDot.index + offset).toLocaleString()}</span>
-            </div>
+            {hoveredDot.digitEnd - hoveredDot.digitStart === 1 ? (
+              <>
+                <div className="flex items-center gap-2 mb-1">
+                  <span
+                    className="w-4 h-4 rounded-full flex items-center justify-center font-bold text-white shadow-sm"
+                    style={{ backgroundColor: hoveredDot.color }}
+                  >
+                    {hoveredDot.digit}
+                  </span>
+                  <span className="font-bold text-slate-100">Digit: {hoveredDot.digit}</span>
+                </div>
+                <div className="text-slate-400 text-[11px]">
+                  Spiral Position:{' '}
+                  <span className="text-purple-300 font-bold">#{hoveredDot.digitStart.toLocaleString()}</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="w-4 h-4 rounded shadow-sm" style={{ backgroundColor: hoveredDot.color }} />
+                  <span className="font-bold text-slate-100">
+                    {(hoveredDot.digitEnd - hoveredDot.digitStart).toLocaleString()} digits
+                  </span>
+                </div>
+                <div className="text-slate-400 text-[11px]">
+                  <span className="text-purple-300 font-bold">#{hoveredDot.digitStart.toLocaleString()}</span> to{' '}
+                  <span className="text-purple-300 font-bold">#{(hoveredDot.digitEnd - 1).toLocaleString()}</span>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {isCounting && (
+          <div className="absolute top-3 left-3 bg-slate-900/90 border border-slate-700 rounded-lg px-2.5 py-1 text-[11px] text-slate-300 flex items-center gap-2 pointer-events-none">
+            <Loader2 className="w-3 h-3 animate-spin text-purple-400" />
+            <span>Counting digits...</span>
           </div>
         )}
 
@@ -384,7 +447,10 @@ export default function ViewSpiral({
         </div>
 
         <div className="absolute bottom-3 right-3 bg-slate-900/80 backdrop-blur-sm border border-slate-800 rounded-lg px-2.5 py-1 text-[11px] text-slate-400 font-mono pointer-events-none">
-          <span>{digitCount.toLocaleString()} points rendered</span>
+          <span>
+            {(agg?.cells ?? 0).toLocaleString()} points rendered
+            {agg && agg.perCell > 1 ? ` (${agg.perCell.toLocaleString()} digits each)` : ''}
+          </span>
         </div>
       </div>
     </div>

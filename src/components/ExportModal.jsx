@@ -1,7 +1,19 @@
 import React, { useState } from 'react';
 import { Download, X, Image as ImageIcon, Check } from 'lucide-react';
+import { MAX_CELLS, aggregateCounts, cellCount, colorizeCells } from '../utils/aggregate';
 
-export default function ExportModal({ isOpen, onClose, piDigits, colors, activePaletteName }) {
+export default function ExportModal({
+  isOpen,
+  onClose,
+  store,
+  start,
+  perCell,
+  colorMode,
+  enhance,
+  colors,
+  isolatedDigit,
+  activePaletteName,
+}) {
   const [resolution, setResolution] = useState(1000); // 500, 1000, 2000
   const [includeLegend, setIncludeLegend] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
@@ -11,7 +23,7 @@ export default function ExportModal({ isOpen, onClose, piDigits, colors, activeP
   const handleDownload = () => {
     setIsExporting(true);
 
-    setTimeout(() => {
+    setTimeout(async () => {
       try {
         const canvas = document.createElement('canvas');
         const size = resolution;
@@ -24,21 +36,30 @@ export default function ExportModal({ isOpen, onClose, piDigits, colors, activeP
         ctx.fillStyle = '#030712';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Render pixel grid
+        // Render pixel grid. It covers the same digits the views show; if the
+        // image has fewer pixels than that, each pixel stands for more digits.
         const cols = resolution === 2000 ? 1000 : resolution === 1000 ? 500 : 250;
-        const rows = cols;
+        const span = Math.min(store.length - start, MAX_CELLS * perCell);
+        const exportPerCell = Math.max(perCell, Math.ceil(span / (cols * cols)));
+        const cells = cellCount(start, start + span, exportPerCell);
         const pixelW = size / cols;
-        const totalPoints = Math.min(piDigits.length, cols * rows);
+        const coveredDigits = Math.min(span, cells * exportPerCell);
 
-        for (let i = 0; i < totalPoints; i++) {
-          const col = i % cols;
-          const row = Math.floor(i / cols);
-          const d = piDigits.charCodeAt(i) - 48;
-          if (d >= 0 && d <= 9) {
-            ctx.fillStyle = colors[d];
-            ctx.fillRect(col * pixelW, row * pixelW, pixelW, pixelW);
-          }
-        }
+        const counts = await aggregateCounts(store, start, exportPerCell, cells);
+        const { colors: cellColors } = colorizeCells(counts, cells, colors, {
+          mode: colorMode,
+          enhance,
+          isolated: isolatedDigit,
+        });
+        const gridCanvas = document.createElement('canvas');
+        gridCanvas.width = cols;
+        gridCanvas.height = Math.ceil(cells / cols);
+        const gridCtx = gridCanvas.getContext('2d');
+        const image = gridCtx.createImageData(gridCanvas.width, gridCanvas.height);
+        new Uint32Array(image.data.buffer).set(cellColors);
+        gridCtx.putImageData(image, 0, 0);
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(gridCanvas, 0, 0, size, gridCanvas.height * pixelW);
 
         // Render Legend / Header footer
         if (includeLegend) {
@@ -47,7 +68,7 @@ export default function ExportModal({ isOpen, onClose, piDigits, colors, activeP
 
           ctx.fillStyle = '#f8fafc';
           ctx.font = 'bold 18px "JetBrains Mono", sans-serif';
-          ctx.fillText(`π Chroma — ${totalPoints.toLocaleString()} Digits`, 24, size + 35);
+          ctx.fillText(`π Chroma — ${coveredDigits.toLocaleString()} Digits${exportPerCell > 1 ? ` (${exportPerCell.toLocaleString()} per pixel)` : ''}`, 24, size + 35);
 
           ctx.fillStyle = '#94a3b8';
           ctx.font = '12px "JetBrains Mono", sans-serif';
@@ -72,7 +93,7 @@ export default function ExportModal({ isOpen, onClose, piDigits, colors, activeP
         // Create download link
         const dataUrl = canvas.toDataURL('image/png');
         const link = document.createElement('a');
-        link.download = `pi-chroma-${totalPoints}-digits.png`;
+        link.download = `pi-chroma-${coveredDigits}-digits.png`;
         link.href = dataUrl;
         link.click();
       } catch (err) {
