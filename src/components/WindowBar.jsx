@@ -18,6 +18,8 @@ export default function WindowBar({
   onChangeStart,
   onLoadFile,
   load,
+  explorerRange,
+  onGoTo,
   perCell,
   scaleOption,
   onScaleChange,
@@ -29,7 +31,8 @@ export default function WindowBar({
   const fileInputRef = useRef(null);
   const [gotoInput, setGotoInput] = useState('');
 
-  const canMove = totalDigits > windowSize;
+  const explorer = explorerRange !== null && explorerRange !== undefined;
+  const canMove = totalDigits > windowSize && !explorer;
   const maxStart = Math.max(0, totalDigits - windowSize);
   const sliderMax = Math.floor(maxStart / step) * step;
   const windowEnd = windowStart + windowSize;
@@ -38,7 +41,7 @@ export default function WindowBar({
     e.preventDefault();
     const val = parseInt(gotoInput.replace(/[,\s]/g, ''), 10);
     if (!isNaN(val) && val >= 0 && val < totalDigits) {
-      onChangeStart(Math.floor((val - windowSize / 2) / step) * step);
+      onGoTo(val);
     }
   };
 
@@ -54,8 +57,9 @@ export default function WindowBar({
         <div className="flex items-center gap-2 text-xs font-mono text-slate-300">
           <Navigation className="w-3.5 h-3.5 text-purple-400" />
           <span>
-            Showing #<strong className="text-white">{windowStart.toLocaleString()}</strong> to #
-            <strong className="text-white">{(windowEnd - 1).toLocaleString()}</strong>
+            {explorer ? 'In view' : 'Showing'} #
+            <strong className="text-white">{(explorer ? explorerRange.first : windowStart).toLocaleString()}</strong> to #
+            <strong className="text-white">{(explorer ? explorerRange.last : windowEnd - 1).toLocaleString()}</strong>
           </span>
           <span className="text-slate-500">of {totalDigits.toLocaleString()} digits loaded</span>
         </div>
@@ -79,6 +83,10 @@ export default function WindowBar({
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
+            </>
+          )}
+          {(canMove || explorer) && (
+            <>
               <form onSubmit={handleGoto} className="flex items-center gap-1.5">
                 <input
                   type="text"

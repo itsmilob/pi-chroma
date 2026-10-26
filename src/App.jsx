@@ -3,6 +3,7 @@ import Header from './components/Header';
 import PaletteBar from './components/PaletteBar';
 import SearchPanel from './components/SearchPanel';
 import ViewMosaic from './components/ViewMosaic';
+import ViewMosaicExplorer from './components/ViewMosaicExplorer';
 import ViewTextStream from './components/ViewTextStream';
 import ViewSpiral from './components/ViewSpiral';
 import ViewStats from './components/ViewStats';
@@ -35,6 +36,9 @@ export default function App() {
   const [colorMode, setColorMode] = useState('blend');
   const [enhance, setEnhance] = useState(true);
   const [windowStart, setWindowStart] = useState(0);
+  // The 1:1 mosaic scrolls freely over every digit; these track where it is
+  const [explorerCenter, setExplorerCenter] = useState(0);
+  const [visibleRange, setVisibleRange] = useState(null);
   const perCell = scaleOption === 'fit' ? Math.max(1, Math.ceil(store.length / MAX_CELLS)) : scaleOption;
   const windowSize = Math.min(store.length, MAX_CELLS * perCell);
   const maxWindowStart = Math.max(0, store.length - windowSize);
@@ -192,9 +196,29 @@ export default function App() {
         next = Math.max(0, Math.min(maxWindowStart, centered));
       }
       setWindowStart(next);
+      setExplorerCenter(index);
       setJump((prev) => ({ index, seq: prev.seq + 1 }));
     },
     [windowSize, maxWindowStart]
+  );
+
+  // The 1:1 mosaic reports where it settled; other views start from there
+  const handleExplorerMove = useCallback(
+    ({ center, first, last }) => {
+      setExplorerCenter(center);
+      setVisibleRange({ first, last });
+      setWindowStart(Math.max(0, Math.floor((center - windowSize / 2) / WINDOW_STEP) * WINDOW_STEP));
+    },
+    [windowSize]
+  );
+
+  // From the overview, zoom in to individual cubes at a digit
+  const handleZoomInto = useCallback(
+    (index) => {
+      setScaleOption(1);
+      handleJumpToIndex(index);
+    },
+    [handleJumpToIndex]
   );
 
   // Reset active match index on search change
@@ -288,6 +312,8 @@ export default function App() {
           onChangeStart={(next) => setWindowStart(Math.max(0, Math.min(maxWindowStart, next)))}
           onLoadFile={handleLoadFile}
           load={bigLoad}
+          explorerRange={activeMode === 'mosaic' && perCell === 1 ? visibleRange ?? { first: 0, last: 0 } : null}
+          onGoTo={handleJumpToIndex}
           perCell={perCell}
           scaleOption={scaleOption}
           onScaleChange={setScaleOption}
@@ -299,21 +325,35 @@ export default function App() {
 
         {/* Main View Area based on Mode */}
         <main className="flex-1">
-          {activeMode === 'mosaic' && (
-            <ViewMosaic
-              store={store}
-              start={start}
-              windowSize={windowSize}
-              perCell={perCell}
-              colorMode={colorMode}
-              enhance={enhance}
-              colors={colors}
-              isolatedDigit={isolatedDigit}
-              searchResult={searchResult}
-              activeMatchIndex={activeMatchIndex}
-              jump={jump}
-            />
-          )}
+          {activeMode === 'mosaic' &&
+            (perCell === 1 ? (
+              <ViewMosaicExplorer
+                store={store}
+                colors={colors}
+                isolatedDigit={isolatedDigit}
+                searchResult={searchResult}
+                activeMatchIndex={activeMatchIndex}
+                jump={jump}
+                center={explorerCenter}
+                onMove={handleExplorerMove}
+                onOverview={() => setScaleOption('fit')}
+              />
+            ) : (
+              <ViewMosaic
+                store={store}
+                start={start}
+                windowSize={windowSize}
+                perCell={perCell}
+                colorMode={colorMode}
+                enhance={enhance}
+                colors={colors}
+                isolatedDigit={isolatedDigit}
+                searchResult={searchResult}
+                activeMatchIndex={activeMatchIndex}
+                jump={jump}
+                onZoomInto={handleZoomInto}
+              />
+            ))}
 
           {activeMode === 'stream' && (
             <ViewTextStream

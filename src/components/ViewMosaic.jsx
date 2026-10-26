@@ -18,6 +18,7 @@ export default function ViewMosaic({
   searchResult,
   activeMatchIndex,
   jump,
+  onZoomInto,
 }) {
   const containerRef = useRef(null);
   const canvasRef = useRef(null);
@@ -421,6 +422,7 @@ export default function ViewMosaic({
         onMouseUp={handleMouseUp}
         onMouseMove={handleMouseMove}
         onWheel={handleWheel}
+        onDoubleClick={() => hoveredCell && onZoomInto?.(hoveredCell.digitStart)}
         className={`relative w-full h-[580px] bg-slate-950 overflow-hidden select-none cursor-${
           isDragging ? 'grabbing' : 'grab'
         }`}
@@ -502,7 +504,7 @@ export default function ViewMosaic({
         {/* Overlay instructions / indicator */}
         <div className="absolute bottom-3 left-3 bg-slate-900/80 backdrop-blur-sm border border-slate-800 rounded-lg px-2.5 py-1 text-[11px] text-slate-400 flex items-center gap-2 pointer-events-none">
           <Move className="w-3 h-3 text-purple-400" />
-          <span>Click & Drag to pan • Scroll to zoom • Hover pixel for details</span>
+          <span>Drag to pan • Scroll to zoom • Double-click a cell to zoom in to its digits</span>
         </div>
 
         <div className="absolute bottom-3 right-3 bg-slate-900/80 backdrop-blur-sm border border-slate-800 rounded-lg px-2.5 py-1 text-[11px] text-slate-400 font-mono pointer-events-none">
