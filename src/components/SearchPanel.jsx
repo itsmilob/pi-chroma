@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Search, ChevronLeft, ChevronRight, Calendar, Sparkles, X, Target, Telescope, Loader2, ExternalLink } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Calendar, Sparkles, X, Target, Search as SearchIcon, Loader2, ExternalLink } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { FAMOUS_PATTERNS } from '../constants/palettes';
 import { formatDatePatterns } from '../utils/piSearch';
-import { searchDeepPiIndex } from '../utils/billionPiService';
+import { searchDeepPiIndex } from '../utils/deepPiSearch';
 
 export default function SearchPanel({
   searchQuery,
@@ -13,7 +13,6 @@ export default function SearchPanel({
   onNavigateMatch,
   onJumpToMatch,
   colors,
-  onJumpToBillionIndex,
 }) {
   const [showBirthdayPicker, setShowBirthdayPicker] = useState(false);
   const [selectedDate, setSelectedDate] = useState('');
@@ -215,7 +214,7 @@ export default function SearchPanel({
             </span>
           </div>
 
-          {/* Deep 1-Billion Search Trigger */}
+          {/* Deep Search Trigger */}
           {searchResult.totalMatches === 0 && !deepSearchResult && (
             <button
               onClick={handleDeepSearch}
@@ -225,9 +224,9 @@ export default function SearchPanel({
               {isSearchingDeep ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
-                <Telescope className="w-3.5 h-3.5" />
+                <SearchIcon className="w-3.5 h-3.5" />
               )}
-              <span>Search in 1 Billion Digits</span>
+              <span>Search deeper (online index)</span>
             </button>
           )}
 
@@ -281,7 +280,7 @@ export default function SearchPanel({
               <div>
                 <div className="font-bold text-purple-200 flex items-center gap-1.5">
                   <Sparkles className="w-4 h-4 text-amber-400" />
-                  <span>Found in Deep Pi at decimal position #{deepSearchResult.position.toLocaleString()}!</span>
+                  <span>Found in Pi at decimal position #{deepSearchResult.position.toLocaleString()}!</span>
                 </div>
                 <div className="font-mono text-[11px] text-slate-400 mt-1">
                   Context: ...{deepSearchResult.digitsBefore}
@@ -291,19 +290,10 @@ export default function SearchPanel({
                   {deepSearchResult.digitsAfter}...
                 </div>
               </div>
-              {onJumpToBillionIndex && (
-                <button
-                  onClick={() => onJumpToBillionIndex(Math.max(0, deepSearchResult.position - 50))}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold shadow-md transition-colors"
-                >
-                  <Telescope className="w-3.5 h-3.5" />
-                  <span>Stream & View in Colors</span>
-                </button>
-              )}
             </div>
           ) : (
             <div className="text-rose-400">
-              Pattern "{deepSearchResult.pattern}" was not found within the searched 1 Billion digit index.
+              Pattern "{deepSearchResult.pattern}" was not found in the online deep-search index.
             </div>
           )}
         </div>

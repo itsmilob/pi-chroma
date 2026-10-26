@@ -1,20 +1,15 @@
 import React, { useState, useMemo } from 'react';
-import { BarChart3, CheckCircle2, TrendingUp, Grid, Loader2, Telescope } from 'lucide-react';
+import { BarChart3, CheckCircle2, TrendingUp, Grid, Loader2 } from 'lucide-react';
 import { computeDigitStats } from '../utils/piSearch';
-import { ONE_BILLION_STATS } from '../utils/billionPiService';
 
 export default function ViewStats({ piDigits, colors, isLoadingFullPi }) {
-  const [sampleLimit, setSampleLimit] = useState(1000000); // 1000, 10000, 100000, 1000000, 1000000000
+  const [sampleLimit, setSampleLimit] = useState(1000000);
 
-  const isBillionSample = sampleLimit === 1000000000;
   const effectiveLimit = Math.min(sampleLimit, piDigits.length);
 
   const stats = useMemo(() => {
-    if (isBillionSample) {
-      return ONE_BILLION_STATS;
-    }
     return computeDigitStats(piDigits, effectiveLimit);
-  }, [piDigits, effectiveLimit, isBillionSample]);
+  }, [piDigits, effectiveLimit]);
 
   // Compute 10x10 transition matrix: count how often digit A is followed by digit B
   const transitionMatrix = useMemo(() => {
@@ -63,7 +58,6 @@ export default function ViewStats({ piDigits, colors, isLoadingFullPi }) {
             <option value={10000}>First 10,000 digits (~1,000 / digit)</option>
             <option value={100000}>First 100,000 digits (~10,000 / digit)</option>
             <option value={1000000}>Full 1,000,000 digits (~100,000 / digit)</option>
-            <option value={1000000000}>Full 1 Billion Digits (~100M / digit)</option>
           </select>
         </div>
       </div>

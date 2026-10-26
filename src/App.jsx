@@ -9,22 +9,14 @@ import ViewStats from './components/ViewStats';
 import AudioSonifier from './components/AudioSonifier';
 import ExportModal from './components/ExportModal';
 import AboutModal from './components/AboutModal';
-import BillionNavigator from './components/BillionNavigator';
 import { COLOR_PALETTES } from './constants/palettes';
 import { INITIAL_PI } from './constants/initialPi';
 import { searchPattern } from './utils/piSearch';
-import { fetchBillionPiWindow } from './utils/billionPiService';
 
 export default function App() {
   // Pi Digits data (starts with 10k pre-bundled digits, async loads 1M digits)
   const [piDigits, setPiDigits] = useState(INITIAL_PI);
   const [isLoadingFullPi, setIsLoadingFullPi] = useState(true);
-  const local1MCacheRef = useRef(null);
-
-  // 1 Billion Digits Telescope State
-  const [isBillionMode, setIsBillionMode] = useState(false);
-  const [currentBillionIndex, setCurrentBillionIndex] = useState(999999000);
-  const [isLoadingWindow, setIsLoadingWindow] = useState(false);
 
   // Active view mode: 'mosaic' | 'stream' | 'spiral' | 'stats'
   const [activeMode, setActiveMode] = useState('mosaic');
@@ -64,7 +56,6 @@ export default function App() {
             const text = await res.text();
             if (!cancelled && text && text.length > 50000) {
               setPiDigits(text);
-              local1MCacheRef.current = text;
               setIsLoadingFullPi(false);
               return;
             }
@@ -85,36 +76,6 @@ export default function App() {
       cancelled = true;
     };
   }, []);
-
-  // Jump to arbitrary index up to 1 Billion and stream window
-  const handleJumpToBillionIndex = useCallback(async (index) => {
-    setIsLoadingWindow(true);
-    setIsBillionMode(true);
-    setCurrentBillionIndex(index);
-
-    if (!local1MCacheRef.current) {
-      local1MCacheRef.current = piDigits;
-    }
-
-    const windowData = await fetchBillionPiWindow(index, 5000);
-    setIsLoadingWindow(false);
-
-    if (windowData.digits && windowData.digits.length > 0) {
-      setPiDigits(windowData.digits);
-    }
-  }, [piDigits]);
-
-  // Toggle 1 Billion mode
-  const handleToggleBillionMode = useCallback(() => {
-    if (!isBillionMode) {
-      handleJumpToBillionIndex(currentBillionIndex);
-    } else {
-      setIsBillionMode(false);
-      if (local1MCacheRef.current) {
-        setPiDigits(local1MCacheRef.current);
-      }
-    }
-  }, [isBillionMode, currentBillionIndex, handleJumpToBillionIndex]);
 
   // Update a single digit's color
   const handleColorChange = useCallback((digit, newColor) => {
@@ -197,21 +158,7 @@ export default function App() {
           isAudioVisible={isAudioVisible}
           setIsAudioVisible={setIsAudioVisible}
           onOpenAbout={() => setIsAboutOpen(true)}
-          isBillionMode={isBillionMode}
-          onToggleBillionMode={handleToggleBillionMode}
         />
-
-        {/* 1 Billion Digits Telescope Navigator */}
-        {isBillionMode && (
-          <BillionNavigator
-            isBillionMode={isBillionMode}
-            onToggleBillionMode={handleToggleBillionMode}
-            currentBillionIndex={currentBillionIndex}
-            onJumpToBillionIndex={handleJumpToBillionIndex}
-            isLoadingWindow={isLoadingWindow}
-            windowLength={piDigits.length}
-          />
-        )}
 
         {/* Audio Synthesizer Panel (collapsible) */}
         {isAudioVisible && (
@@ -242,7 +189,6 @@ export default function App() {
           onNavigateMatch={handleNavigateMatch}
           onJumpToMatch={handleJumpToMatch}
           colors={colors}
-          onJumpToBillionIndex={handleJumpToBillionIndex}
         />
 
         {/* Main View Area based on Mode */}
