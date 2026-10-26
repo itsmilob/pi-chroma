@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Search, ChevronLeft, ChevronRight, Calendar, Sparkles, X, Target, Info } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Calendar, Sparkles, X, Target, Telescope, Loader2, ExternalLink } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { FAMOUS_PATTERNS } from '../constants/palettes';
 import { formatDatePatterns } from '../utils/piSearch';
+import { searchDeepPiIndex } from '../utils/billionPiService';
 
 export default function SearchPanel({
   searchQuery,
@@ -12,29 +13,51 @@ export default function SearchPanel({
   onNavigateMatch,
   onJumpToMatch,
   colors,
+  onJumpToBillionIndex,
 }) {
   const [showBirthdayPicker, setShowBirthdayPicker] = useState(false);
   const [selectedDate, setSelectedDate] = useState('');
+  const [isSearchingDeep, setIsSearchingDeep] = useState(false);
+  const [deepSearchResult, setDeepSearchResult] = useState(null);
 
   const handleApplyPattern = (pattern, label) => {
     onSearchChange(pattern);
+    setDeepSearchResult(null);
     if (pattern === '999999') {
       confetti({
         particleCount: 80,
         spread: 60,
-        origin: { y: 0.6 }
+        origin: { y: 0.6 },
       });
     }
   };
 
   const handleDateChange = (date) => {
     setSelectedDate(date);
+    setDeepSearchResult(null);
     if (date) {
       const patterns = formatDatePatterns(date);
       if (patterns.length > 0) {
-        // default to MMDDYYYY
         onSearchChange(patterns[0].value);
       }
+    }
+  };
+
+  const handleDeepSearch = async () => {
+    if (!searchQuery.trim()) return;
+    setIsSearchingDeep(true);
+    setDeepSearchResult(null);
+
+    const result = await searchDeepPiIndex(searchQuery);
+    setIsSearchingDeep(false);
+    setDeepSearchResult(result);
+
+    if (result && result.found) {
+      confetti({
+        particleCount: 100,
+        spread: 70,
+        origin: { y: 0.6 },
+      });
     }
   };
 
@@ -55,7 +78,7 @@ export default function SearchPanel({
               Pi Pattern Search & Digit Finder
             </h3>
             <p className="text-xs text-slate-400">
-              Locate birthdays, repeating sequences, or any digit combo in 1,000,000 digits
+              Locate birthdays, repeating sequences, or any digit combo in up to 1,000,000,000 digits
             </p>
           </div>
         </div>
@@ -90,7 +113,10 @@ export default function SearchPanel({
                 {formatDatePatterns(selectedDate).map((pat) => (
                   <button
                     key={pat.label}
-                    onClick={() => onSearchChange(pat.value)}
+                    onClick={() => {
+                      onSearchChange(pat.value);
+                      setDeepSearchResult(null);
+                    }}
                     className={`text-[11px] px-2 py-1 rounded font-mono transition-colors ${
                       searchQuery === pat.value
                         ? 'bg-pink-600 text-white font-bold'
@@ -113,13 +139,19 @@ export default function SearchPanel({
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Type any digits to search (e.g., 999999, 123456, 777, your phone/bday)..."
+            onChange={(e) => {
+              onSearchChange(e.target.value);
+              setDeepSearchResult(null);
+            }}
+            placeholder="Type any digits (e.g., 999999, 123456, 777, your phone/bday)..."
             className="w-full bg-slate-950/80 border border-slate-700/80 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 text-slate-100 placeholder-slate-500 font-mono text-sm rounded-xl pl-10 pr-24 py-2.5 transition-all outline-none"
           />
           {searchQuery && (
             <button
-              onClick={() => onSearchChange('')}
+              onClick={() => {
+                onSearchChange('');
+                setDeepSearchResult(null);
+              }}
               className="absolute right-3 p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-slate-200"
               title="Clear search"
             >
@@ -176,10 +208,28 @@ export default function SearchPanel({
                   </span>
                 </>
               ) : (
-                <span className="text-rose-400">No match found for "{searchQuery}" in current digits</span>
+                <span className="text-rose-400">
+                  No match found in local 1,000,000 digits
+                </span>
               )}
             </span>
           </div>
+
+          {/* Deep 1-Billion Search Trigger */}
+          {searchResult.totalMatches === 0 && !deepSearchResult && (
+            <button
+              onClick={handleDeepSearch}
+              disabled={isSearchingDeep}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold shadow-md transition-all"
+            >
+              {isSearchingDeep ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Telescope className="w-3.5 h-3.5" />
+              )}
+              <span>Search in 1 Billion Digits</span>
+            </button>
+          )}
 
           {searchResult.matches.length > 0 && (
             <div className="flex items-center gap-2">
@@ -218,6 +268,42 @@ export default function SearchPanel({
                   </button>
                 )}
               </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Deep Search Results Card */}
+      {deepSearchResult && (
+        <div className="mt-3 p-3 rounded-xl bg-purple-950/40 border border-purple-500/40 text-xs">
+          {deepSearchResult.found ? (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="font-bold text-purple-200 flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-amber-400" />
+                  <span>Found in Deep Pi at decimal position #{deepSearchResult.position.toLocaleString()}!</span>
+                </div>
+                <div className="font-mono text-[11px] text-slate-400 mt-1">
+                  Context: ...{deepSearchResult.digitsBefore}
+                  <span className="text-white font-bold bg-purple-600/40 px-1 py-0.5 rounded">
+                    {deepSearchResult.pattern}
+                  </span>
+                  {deepSearchResult.digitsAfter}...
+                </div>
+              </div>
+              {onJumpToBillionIndex && (
+                <button
+                  onClick={() => onJumpToBillionIndex(Math.max(0, deepSearchResult.position - 50))}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold shadow-md transition-colors"
+                >
+                  <Telescope className="w-3.5 h-3.5" />
+                  <span>Stream & View in Colors</span>
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="text-rose-400">
+              Pattern "{deepSearchResult.pattern}" was not found within the searched 1 Billion digit index.
             </div>
           )}
         </div>

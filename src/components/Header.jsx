@@ -21,6 +21,8 @@ export default function Header({
   isAudioVisible,
   setIsAudioVisible,
   onOpenAbout,
+  isBillionMode,
+  onToggleBillionMode,
 }) {
   const modes = [
     { id: 'mosaic', label: 'Color Mosaic', icon: LayoutGrid, desc: 'Visual 2D pixel canvas' },
@@ -73,6 +75,19 @@ export default function Header({
               <span className="text-[10px] text-amber-400">(Loading 1M...)</span>
             )}
           </div>
+
+          {/* 1 Billion Digits Telescope Toggle */}
+          <button
+            onClick={onToggleBillionMode}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+              isBillionMode
+                ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white border-purple-400 shadow-md shadow-purple-500/30 ring-1 ring-purple-300'
+                : 'bg-slate-900 hover:bg-slate-800 text-purple-300 border-purple-900/60 hover:border-purple-700'
+            }`}
+            title="Explore up to 1,000,000,000 digits of Pi"
+          >
+            <span>🔭 1 Billion Mode</span>
+          </button>
 
           {/* Toggle Audio */}
           <button
