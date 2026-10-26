@@ -36,6 +36,19 @@ jobs:
       - name: Build project
         run: npm run build
 
+      # The 500 MB billion-digit file is too big for the repo, so it lives in a
+      # Release and is copied into the site here (server-side, so no CORS).
+      # Without the asset the site still deploys with the bundled 1M digits.
+      - name: Add billion-digit data from Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release download data-v1 --pattern pi-1b.pi4 --dir dist; then
+            ls -l dist/pi-1b.pi4
+          else
+            echo "::warning::Release data-v1 / pi-1b.pi4 not found; deploying with 1M digits only"
+          fi
+
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
