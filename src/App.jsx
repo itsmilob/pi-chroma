@@ -3,7 +3,6 @@ import Header from './components/Header';
 import PaletteBar from './components/PaletteBar';
 import SearchPanel from './components/SearchPanel';
 import ViewMosaic from './components/ViewMosaic';
-import ViewMosaicExplorer from './components/ViewMosaicExplorer';
 import ViewTextStream from './components/ViewTextStream';
 import ViewSpiral from './components/ViewSpiral';
 import ViewStats from './components/ViewStats';
@@ -325,35 +324,25 @@ export default function App() {
 
         {/* Main View Area based on Mode */}
         <main className="flex-1">
-          {activeMode === 'mosaic' &&
-            (perCell === 1 ? (
-              <ViewMosaicExplorer
-                store={store}
-                colors={colors}
-                isolatedDigit={isolatedDigit}
-                searchResult={searchResult}
-                activeMatchIndex={activeMatchIndex}
-                jump={jump}
-                center={explorerCenter}
-                onMove={handleExplorerMove}
-                onOverview={() => setScaleOption('fit')}
-              />
-            ) : (
-              <ViewMosaic
-                store={store}
-                start={start}
-                windowSize={windowSize}
-                perCell={perCell}
-                colorMode={colorMode}
-                enhance={enhance}
-                colors={colors}
-                isolatedDigit={isolatedDigit}
-                searchResult={searchResult}
-                activeMatchIndex={activeMatchIndex}
-                jump={jump}
-                onZoomInto={handleZoomInto}
-              />
-            ))}
+          {activeMode === 'mosaic' && (
+            <ViewMosaic
+              store={store}
+              start={start}
+              windowSize={windowSize}
+              perCell={perCell}
+              colorMode={colorMode}
+              enhance={enhance}
+              colors={colors}
+              isolatedDigit={isolatedDigit}
+              searchResult={searchResult}
+              activeMatchIndex={activeMatchIndex}
+              jump={jump}
+              center={explorerCenter}
+              onMove={handleExplorerMove}
+              onOverview={() => setScaleOption('fit')}
+              onZoomInto={handleZoomInto}
+            />
+          )}
 
           {activeMode === 'stream' && (
             <ViewTextStream

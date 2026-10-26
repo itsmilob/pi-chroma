@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { ZoomIn, ZoomOut, Maximize2, Disc, Eye, Sparkles, Sliders, Loader2 } from 'lucide-react';
 import { MAX_CELLS, aggregateCounts, cellCount, colorizeCells, packedToCss } from '../utils/aggregate';
+import { useGestures } from '../utils/useGestures';
 
 export default function ViewSpiral({
   store,
@@ -197,14 +198,7 @@ export default function ViewSpiral({
 
   const handleMouseMove = useCallback(
     (e) => {
-      if (isDragging) {
-        setPan((prev) => ({
-          x: prev.x + (e.clientX - dragStartRef.current.x),
-          y: prev.y + (e.clientY - dragStartRef.current.y),
-        }));
-        dragStartRef.current = { x: e.clientX, y: e.clientY };
-        return;
-      }
+      if (isDragging) return;
 
       const canvas = canvasRef.current;
       if (!canvas) return;
@@ -239,22 +233,13 @@ export default function ViewSpiral({
     [isDragging, zoom, dotSize, agg, cellData, store]
   );
 
-  const handleMouseDown = (e) => {
-    if (e.button === 0) {
-      setIsDragging(true);
-      dragStartRef.current = { x: e.clientX, y: e.clientY };
-    }
-  };
-
-  const handleMouseUp = () => {
-    setIsDragging(false);
-  };
-
-  const handleWheel = (e) => {
-    e.preventDefault();
-    const zoomFactor = e.deltaY < 0 ? 1.15 : 0.87;
-    setZoom((z) => Math.min(8, Math.max(0.15, z * zoomFactor)));
-  };
+  // Pan with a finger or the mouse, zoom with the wheel or a pinch (around the
+  // center), and never scroll or zoom the page from here
+  useGestures(containerRef, {
+    onPan: (dx, dy) => setPan((prev) => ({ x: prev.x + dx, y: prev.y + dy })),
+    onZoom: (factor) => setZoom((z) => Math.min(8, Math.max(0.15, z * factor))),
+    onDragChange: setIsDragging,
+  });
 
   const handleReset = () => {
     setZoom(1);
@@ -369,19 +354,16 @@ export default function ViewSpiral({
       {/* Main Spiral Canvas Container */}
       <div
         ref={containerRef}
-        onMouseDown={handleMouseDown}
-        onMouseUp={handleMouseUp}
-        onMouseMove={handleMouseMove}
-        onWheel={handleWheel}
-        className={`relative w-full h-[620px] bg-slate-950 overflow-hidden flex items-center justify-center cursor-${
-          isDragging ? 'grabbing' : 'grab'
+        onPointerMove={handleMouseMove}
+        onPointerLeave={() => setHoveredDot(null)}
+        className={`relative w-full h-[620px] bg-slate-950 overflow-hidden flex items-center justify-center select-none touch-none overscroll-contain ${
+          isDragging ? 'cursor-grabbing' : 'cursor-grab'
         }`}
       >
         <div
           style={{
             transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
             transformOrigin: 'center center',
-            transition: isDragging ? 'none' : 'transform 0.05s ease-out',
           }}
           className="inline-block"
         >

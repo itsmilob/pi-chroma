@@ -119,7 +119,7 @@ export default function WindowBar({
             title="Load a packed .pi4 file or a text file of pi digits (for example y-cruncher output)"
           >
             {load.active ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FolderOpen className="w-3.5 h-3.5 text-sky-400" />}
-            <span>{load.active ? `Loading ${Math.round(load.progress * 100)}%` : 'Load digits file'}</span>
+            <span>{load.active ? `Loading ${Math.min(100, Math.round(load.progress * 100))}%` : 'Load digits file'}</span>
           </button>
         </div>
       </div>

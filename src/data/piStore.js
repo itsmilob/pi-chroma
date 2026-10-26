@@ -69,56 +69,51 @@ export class PiStore {
 
   // Downloads a packed .pi4 file. Resolves to null if the URL does not serve
   // one (a dev server's SPA fallback answers 200 with index.html).
+  //
+  // Progress comes from the file's own header, not content-length: servers
+  // gzip the download, so content-length counts compressed bytes while the
+  // stream delivers decompressed ones, and received / content-length ran past
+  // 100%.
   static async fromUrl(url, onProgress = () => {}, signal) {
     const res = await fetch(url, { signal });
     if (!res.ok || !res.body) return null;
-    const type = res.headers.get('content-type') || '';
-    if (type.includes('text/html')) return null;
+    if ((res.headers.get('content-type') || '').includes('text/html')) return null;
 
-    const total = Number(res.headers.get('content-length')) || 0;
     const reader = res.body.getReader();
-    const parts = [];
-    let received = 0;
+    let head = new Uint8Array(0); // bytes seen before the header is complete
+    let target = null;
     let written = 0;
-    let checked = false;
-    let target = total ? new Uint8Array(total) : null;
 
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
-      if (!checked) {
-        if (value.length < 4 || !hasMagic(value)) {
+      let chunk = value;
+
+      if (!target) {
+        const joined = new Uint8Array(head.length + chunk.length);
+        joined.set(head, 0);
+        joined.set(chunk, head.length);
+        head = joined;
+        if (head.length < HEADER_BYTES) continue;
+        if (!hasMagic(head)) {
           await reader.cancel();
           return null;
         }
-        checked = true;
+        target = new Uint8Array(HEADER_BYTES + Math.ceil(readHeaderCount(head) / 2));
+        chunk = head;
+        head = null;
       }
-      if (target && !parts.length && written + value.length <= target.length) {
-        target.set(value, written);
-        written += value.length;
-      } else {
-        parts.push(value);
-      }
-      received += value.length;
-      onProgress(total ? received / total : 0);
-    }
-    if (!checked) return null;
 
-    if (!target || parts.length) {
-      // Unknown or wrong content-length: assemble from the pieces we have.
-      const all = new Uint8Array(received);
-      let o = 0;
-      if (target) {
-        all.set(target.subarray(0, written), 0);
-        o = written;
+      if (written + chunk.length > target.length) {
+        throw new Error('Packed Pi file is longer than its header says');
       }
-      for (const p of parts) {
-        all.set(p, o);
-        o += p.length;
-      }
-      target = all;
+      target.set(chunk, written);
+      written += chunk.length;
+      onProgress(Math.min(1, written / target.length));
     }
-    return PiStore.fromPacked(target);
+
+    if (!target) return null;
+    return PiStore.fromPacked(target); // rejects a truncated download
   }
 
   digit(i) {
