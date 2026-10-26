@@ -39,21 +39,39 @@ export default function App() {
   // Fetch full 1,000,000 digits from public folder on mount
   useEffect(() => {
     let cancelled = false;
-    fetch('/pi1000000.txt')
-      .then((res) => {
-        if (!res.ok) throw new Error('Failed to load full digits');
-        return res.text();
-      })
-      .then((text) => {
-        if (!cancelled && text && text.length > 50000) {
-          setPiDigits(text);
-          setIsLoadingFullPi(false);
+
+    async function loadFullPi() {
+      // Try multiple path candidates for local dev, GitHub Pages, and relative subpaths
+      const candidates = [
+        `${import.meta.env.BASE_URL}pi1000000.txt`,
+        './pi1000000.txt',
+        'pi1000000.txt',
+        '/pi-chroma/pi1000000.txt',
+        '/pi1000000.txt',
+      ];
+
+      for (const url of candidates) {
+        try {
+          const res = await fetch(url);
+          if (res.ok) {
+            const text = await res.text();
+            if (!cancelled && text && text.length > 50000) {
+              setPiDigits(text);
+              setIsLoadingFullPi(false);
+              return;
+            }
+          }
+        } catch {
+          // try next candidate
         }
-      })
-      .catch((err) => {
-        console.warn('Could not load 1M digits file, using initial digits:', err);
+      }
+
+      if (!cancelled) {
         setIsLoadingFullPi(false);
-      });
+      }
+    }
+
+    loadFullPi();
 
     return () => {
       cancelled = true;
@@ -212,6 +230,7 @@ export default function App() {
             <ViewStats
               piDigits={piDigits}
               colors={colors}
+              isLoadingFullPi={isLoadingFullPi}
             />
           )}
         </main>

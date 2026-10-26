@@ -1,13 +1,15 @@
 import React, { useState, useMemo } from 'react';
-import { BarChart3, CheckCircle2, TrendingUp, Grid } from 'lucide-react';
+import { BarChart3, CheckCircle2, TrendingUp, Grid, Loader2 } from 'lucide-react';
 import { computeDigitStats } from '../utils/piSearch';
 
-export default function ViewStats({ piDigits, colors }) {
+export default function ViewStats({ piDigits, colors, isLoadingFullPi }) {
   const [sampleLimit, setSampleLimit] = useState(1000000); // 1000, 10000, 100000, 1000000
 
+  const effectiveLimit = Math.min(sampleLimit, piDigits.length);
+
   const stats = useMemo(() => {
-    return computeDigitStats(piDigits, Math.min(sampleLimit, piDigits.length));
-  }, [piDigits, sampleLimit]);
+    return computeDigitStats(piDigits, effectiveLimit);
+  }, [piDigits, effectiveLimit]);
 
   // Compute 10x10 transition matrix: count how often digit A is followed by digit B
   const transitionMatrix = useMemo(() => {
@@ -25,6 +27,7 @@ export default function ViewStats({ piDigits, colors }) {
   }, [piDigits, sampleLimit]);
 
   const maxFreq = Math.max(...stats.frequencies.map((f) => f.count), 1);
+  const expectedPerDigit = Math.round(stats.totalDigits / 10);
 
   return (
     <div className="flex flex-col rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl overflow-hidden mb-6 p-4 sm:p-6">
@@ -45,19 +48,29 @@ export default function ViewStats({ piDigits, colors }) {
         </div>
 
         <div className="flex items-center gap-2 text-xs">
-          <span className="text-slate-400 font-medium">Sample Digits:</span>
+          <span className="text-slate-400 font-medium">Sample Size:</span>
           <select
             value={sampleLimit}
             onChange={(e) => setSampleLimit(Number(e.target.value))}
-            className="bg-slate-950 border border-slate-700 text-slate-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:border-indigo-500"
+            className="bg-slate-950 border border-slate-700 text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 font-mono"
           >
-            <option value={1000}>First 1,000</option>
-            <option value={10000}>First 10,000</option>
-            <option value={100000}>First 100,000</option>
-            <option value={1000000}>Full 1,000,000</option>
+            <option value={1000}>First 1,000 digits (~100 / digit)</option>
+            <option value={10000}>First 10,000 digits (~1,000 / digit)</option>
+            <option value={100000}>First 100,000 digits (~10,000 / digit)</option>
+            <option value={1000000}>Full 1,000,000 digits (~100,000 / digit)</option>
           </select>
         </div>
       </div>
+
+      {/* Loading banner if 1M digits still downloading */}
+      {isLoadingFullPi && (
+        <div className="mb-6 p-3 rounded-xl bg-amber-950/30 border border-amber-800/40 text-xs text-amber-300 flex items-center gap-2">
+          <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+          <span>
+            Loading full 1,000,001 digits dataset in background... Showing analysis for current available digits ({piDigits.length.toLocaleString()} digits).
+          </span>
+        </div>
+      )}
 
       {/* Overview Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
@@ -65,11 +78,12 @@ export default function ViewStats({ piDigits, colors }) {
           <div>
             <span className="text-xs text-slate-400">Total Analyzed</span>
             <div className="text-xl font-bold font-mono text-slate-100">
-              {stats.totalDigits.toLocaleString()}
+              {stats.totalDigits.toLocaleString()} digits
             </div>
           </div>
-          <div className="text-xs font-mono text-slate-500">
-            Expected: {(stats.totalDigits / 10).toLocaleString()} / digit
+          <div className="text-xs font-mono text-slate-400 text-right">
+            Expected Mean:
+            <div className="text-slate-200 font-bold">~{expectedPerDigit.toLocaleString()} / digit</div>
           </div>
         </div>
 
@@ -106,9 +120,23 @@ export default function ViewStats({ piDigits, colors }) {
 
       {/* Digit Bars */}
       <div className="space-y-3 mb-8">
-        <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-          Frequency by Digit (0 – 9)
-        </h4>
+        <div className="flex items-center justify-between">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+            Frequency by Digit (0 – 9)
+          </h4>
+          <span className="text-xs text-slate-500 font-mono">
+            Each digit should ideally appear ~10.00% of the time ({expectedPerDigit.toLocaleString()} times)
+          </span>
+        </div>
+
+        {/* Table Column Headers */}
+        <div className="flex items-center gap-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider px-1 pt-1 pb-2 border-b border-slate-800/80">
+          <div className="w-7 text-center">Digit</div>
+          <div className="flex-1">Relative Distribution (vs 10% expected)</div>
+          <div className="w-24 text-right">Occurrences</div>
+          <div className="w-16 text-right">Frequency</div>
+          <div className="w-16 text-right">Deviation</div>
+        </div>
 
         <div className="space-y-2">
           {stats.frequencies.map(({ digit, count, percentage, diff }) => {
@@ -116,7 +144,7 @@ export default function ViewStats({ piDigits, colors }) {
             const color = colors[digit];
 
             return (
-              <div key={digit} className="flex items-center gap-3 text-xs font-mono">
+              <div key={digit} className="flex items-center gap-3 text-xs font-mono py-0.5 hover:bg-slate-950/40 px-1 rounded transition-colors">
                 {/* Digit Badge */}
                 <div
                   className="w-7 h-7 rounded-lg flex items-center justify-center font-bold text-white shadow-sm shrink-0"
@@ -172,7 +200,7 @@ export default function ViewStats({ piDigits, colors }) {
           </h4>
         </div>
         <p className="text-[11px] text-slate-400 mb-4">
-          Shows how many times digit row $A$ is immediately followed by digit column $B$. In a truly random stream, all cells are roughly equal.
+          Shows how many times digit row $A$ is immediately followed by digit column $B$. In a truly random stream, all cells are roughly equal (~{(Math.round(stats.totalDigits / 100)).toLocaleString()} each).
         </p>
 
         <div className="overflow-x-auto">
@@ -205,7 +233,6 @@ export default function ViewStats({ piDigits, colors }) {
                 {row.map((val, c) => {
                   const expectedCell = stats.totalDigits / 100;
                   const ratio = expectedCell > 0 ? val / expectedCell : 1;
-                  // Color intensity based on ratio around 1.0
                   const isHigh = ratio > 1.0;
                   const intensity = Math.min(1, Math.abs(ratio - 1) * 8);
 
