@@ -15,9 +15,10 @@ A fast, interactive web application exploring **1,000,001 digits of Pi** rendere
 - **Multiple Visualization Modes**:
   - 🎨 **Color Mosaic (Canvas Matrix)**: Renders up to 1,000,000 pixels in 60fps HTML5 Canvas. Configurable grid widths (50, 100, 200, 314, 500, 1000 cols), pixel sizing (1px to 20px), shapes (Square, Rounded, Dots), zoom & pan, and hover tooltip displaying digit & index.
   - 🔭 **Every digit, one cube each**: at 1:1 the mosaic is a scrollable, zoomable map of all 1,000,000,000 cubes (a 200 × 5,000,001 grid). Only the cubes in view are drawn, so it stays fast anywhere. Drag to pan, scroll to zoom toward the cursor, scrub the right edge to move through every digit, or type a digit number.
+  - 📏 **Scale bar**: turn on *Scale* in the mosaic and set what one cube is (millimeters to miles). A zoomed-out cell of k digits is drawn √k cubes wide (same area), so the bar stays true at every zoom level.
   - 🗺️ **Zoom out to see it all at once**: a screen only has about 2 million pixels, so the overview (1:10, 1:100, 1:1,000 or *Fit all*) makes each cell stand for a block of digits, colored by a blend of its digits or its most common one. Double-click a cell to zoom into its cubes. The spiral uses the same scale; the stream pages through every digit; export covers whatever the views show.
   - 🔢 **Digits Stream (Readable Numbers)**: Formatted with index line gutters (`#000050`), chunking (5 or 10 digits), and two display styles: *Color Badges* or *Color Text*.
-  - 🌀 **Archimedean & Fermat Spirals**: Pi winding outwards from the center ($3.$) into an infinite circle mandala.
+  - 🌀 **Archimedean & Fermat Spirals**: the whole store winds out from the center, and the picture is redrawn at your screen's native resolution at every zoom level. Zoomed out, each dot is a block of digits (colored by a blend or the most common digit); zoom in and it resolves to one dot per digit, then labeled digits. Only the dots in view are computed. (Fermat shows the first 2,000,000 digits.)
   - 📊 **Distribution & Randomness Analytics**: Frequency bar charts, percentage breakdown, $\chi^2$ (Chi-square) uniformity test, and a $10 \times 10$ transition heatmap.
 - **Pattern Search & Discovery**:
   - Instant substring search across 1,000,001 digits.

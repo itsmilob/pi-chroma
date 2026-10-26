@@ -359,14 +359,13 @@ export default function App() {
           {activeMode === 'spiral' && (
             <ViewSpiral
               store={store}
-              start={start}
-              perCell={perCell}
               colorMode={colorMode}
               enhance={enhance}
               colors={colors}
               isolatedDigit={isolatedDigit}
               searchResult={searchResult}
               activeMatchIndex={activeMatchIndex}
+              jump={jump}
             />
           )}
 

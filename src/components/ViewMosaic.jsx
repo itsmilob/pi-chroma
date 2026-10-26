@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react'
 import { ZoomIn, ZoomOut, Move, Layers, Maximize2, Loader2, Crosshair } from 'lucide-react';
 import { aggregateCounts, cellCount, colorizeCells, hexToRgb, packedToCss } from '../utils/aggregate';
 import { useGestures } from '../utils/useGestures';
+import ScaleBar, { UNITS, friendlyLength } from './ScaleBar';
 import { HEADER_BYTES } from '../data/piParse.js';
 
 // The mosaic is a grid of cells on a canvas the size of the viewport; only the
@@ -58,6 +59,11 @@ export default function ViewMosaic({
   const [scroll, setScroll] = useState({ top: 0, size: 0 }); // scrubber thumb, 0-1
   const [isDragging, setIsDragging] = useState(false);
 
+  // Optional real-world scale: one digit is a cube of `cubeSize` `scaleUnit`s
+  const [scaleOn, setScaleOn] = useState(false);
+  const [scaleUnit, setScaleUnit] = useState('in');
+  const [cubeSize, setCubeSize] = useState(1);
+
   // Zoomed out: digit counts per cell for the current window and scale. Counting
   // is the slow part (a billion digits take ~2s), so it runs once per
   // window/scale; palette, isolation and color mode just recolor the counts.
@@ -97,7 +103,7 @@ export default function ViewMosaic({
   // The live view lives in refs: panning and zooming redraw the canvas every
   // frame and must not go through React renders.
   const viewRef = useRef({ x: 0, y: 0, px: 6 }); // top-left in cell units; screen px per cell
-  const sizeRef = useRef({ w: 0, h: 0 });
+  const sizeRef = useRef({ w: 0, h: 0, dpr: 1 });
   const rafRef = useRef(0);
   const reportTimerRef = useRef(0);
   const pointerRef = useRef({ x: 0, y: 0 });
@@ -150,9 +156,12 @@ export default function ViewMosaic({
   const draw = useCallback(() => {
     rafRef.current = 0;
     const canvas = canvasRef.current;
-    const { w, h } = sizeRef.current;
+    const { w, h, dpr } = sizeRef.current;
     if (!canvas || !w || !h) return;
     const ctx = canvas.getContext('2d', { alpha: false });
+    // Draw in CSS pixels onto a canvas with one pixel per device pixel, so cubes
+    // and edges stay sharp on high-DPI screens and phones
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const { source: src, store: st, colors: pal, isolatedDigit: iso, searchResult: result, activeMatchIndex: active, columns: cols, shape: shp, showDigits: digits, showGridLines: lines } = live.current;
     const { x, y, px } = viewRef.current;
 
@@ -395,9 +404,10 @@ export default function ViewMosaic({
       const w = container.clientWidth;
       const h = container.clientHeight;
       if (!w || !h) return;
-      sizeRef.current = { w, h };
-      canvas.width = w;
-      canvas.height = h;
+      const dpr = window.devicePixelRatio || 1;
+      sizeRef.current = { w, h, dpr };
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
       if (pendingCenterRef.current !== null) {
         const cell = pendingCenterRef.current;
         pendingCenterRef.current = null;
@@ -498,6 +508,16 @@ export default function ViewMosaic({
   const total = source?.total ?? 0;
   const rows = rowsOf(columns, total);
 
+  // A cell of k digits has k times the area of one cube, so it is drawn sqrt(k)
+  // cubes wide (area-preserving). That keeps the scale true at every zoom level.
+  const cellsPerRowDigits = source?.perCell ?? perCell;
+  const cellUnits = Math.max(1e-9, cubeSize) * Math.sqrt(cellsPerRowDigits);
+  const pxPerUnit = uiPx / cellUnits;
+  const unitInfo = UNITS[scaleUnit];
+  const gridText = scaleOn
+    ? `${friendlyLength(columns * cellUnits * unitInfo.m, unitInfo.imperial)} wide × ${friendlyLength(rows * cellUnits * unitInfo.m, unitInfo.imperial)} tall`
+    : '';
+
   // Tooltip content for the hovered cell
   const tip = hovered && hovered.source === source && source ? describeCell(hovered.index, source, store) : null;
 
@@ -553,6 +573,43 @@ export default function ViewMosaic({
               <option value="rounded">Rounded</option>
               <option value="circle">Dots</option>
             </select>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <label className="flex items-center gap-1.5 cursor-pointer text-slate-300">
+              <input
+                type="checkbox"
+                checked={scaleOn}
+                onChange={(e) => setScaleOn(e.target.checked)}
+                className="rounded bg-slate-900 border-slate-700 text-purple-600 focus:ring-0"
+              />
+              <span>Scale</span>
+            </label>
+            {scaleOn && (
+              <>
+                <span className="text-slate-500">1 cube =</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={cubeSize}
+                  onChange={(e) => setCubeSize(Number(e.target.value) > 0 ? Number(e.target.value) : 0)}
+                  className="w-16 bg-slate-900 border border-slate-700 text-slate-200 rounded-lg px-2 py-1 text-xs font-mono focus:outline-none focus:border-purple-500"
+                />
+                <select
+                  value={scaleUnit}
+                  onChange={(e) => setScaleUnit(e.target.value)}
+                  className="bg-slate-900 border border-slate-700 text-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-purple-500"
+                  title="Unit for the scale bar"
+                >
+                  {Object.entries(UNITS).map(([key, u]) => (
+                    <option key={key} value={key}>
+                      {u.name}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
           </div>
 
           {isDigits && uiPx >= 12 && (
@@ -636,7 +693,7 @@ export default function ViewMosaic({
           isDragging ? 'cursor-grabbing' : 'cursor-grab'
         }`}
       >
-        <canvas ref={canvasRef} className="block absolute inset-0" />
+        <canvas ref={canvasRef} className="block absolute inset-0 w-full h-full" />
 
         {/* Scrubber over every row of the grid */}
         <div
@@ -706,6 +763,17 @@ export default function ViewMosaic({
           </div>
         )}
 
+        {scaleOn && cubeSize > 0 && (
+          <div className="absolute bottom-12 left-3 bg-slate-900/80 backdrop-blur-sm border border-slate-800 rounded-lg px-2.5 py-1.5">
+            <ScaleBar pxPerUnit={pxPerUnit} unit={scaleUnit} />
+            {!isDigits && (
+              <div className="mt-1 text-[10px] text-slate-500 font-mono max-w-[260px]">
+                1 cell = {cellsPerRowDigits.toLocaleString()} digits = {Math.sqrt(cellsPerRowDigits).toFixed(1)}× a cube's width (same area)
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="absolute bottom-3 left-3 max-w-[70%] bg-slate-900/80 backdrop-blur-sm border border-slate-800 rounded-lg px-2.5 py-1 text-[11px] text-slate-400 flex items-center gap-2 pointer-events-none">
           <Move className="w-3 h-3 shrink-0 text-purple-400" />
           <span>
@@ -717,6 +785,7 @@ export default function ViewMosaic({
           <span>
             {columns.toLocaleString()} × {rows.toLocaleString()} grid ({total.toLocaleString()} {isDigits ? 'cubes' : 'cells'}
             {isDigits ? '' : `, ${(total * (source?.perCell ?? 1)).toLocaleString()} digits`})
+            {gridText ? ` • ${gridText}` : ''}
           </span>
         </div>
       </div>
