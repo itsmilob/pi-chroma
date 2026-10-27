@@ -642,6 +642,17 @@ export default function ViewMosaic({
             <button onClick={() => zoomBy(1 / 1.3)} className="p-1 rounded hover:bg-slate-800 text-slate-300" title="Zoom Out">
               <ZoomOut className="w-3.5 h-3.5" />
             </button>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.0005"
+              value={clamp(Math.log(uiPx / minPx) / Math.log(MAX_PX / minPx), 0, 1) || 0}
+              onChange={(e) => setPxExactly(minPx * (MAX_PX / minPx) ** Number(e.target.value))}
+              className="w-28 sm:w-40 accent-purple-500"
+              aria-label="Zoom"
+              title="Zoom smoothly between the smallest and largest cell size"
+            />
             <span className="font-mono text-[11px] px-1 text-slate-400 min-w-[52px] text-center">
               {uiPx.toFixed(uiPx < 1 ? 2 : 1)}px
             </span>

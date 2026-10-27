@@ -18,13 +18,13 @@ import { HEADER_BYTES } from '../data/piParse.js';
 
 const BASE = 1000; // block size of the whole-store count cache
 const DIRECT_BUDGET = 8_000_000; // digits read straight from the store per frame
-const BLOCK_CAP = 200_000; // dots per frame when blocks are used, at rest
+const BLOCK_CAP = 1_000_000; // dots per frame when blocks are used, at rest
 const MOVING_BLOCK_CAP = 50_000; // ...while panning or zooming, so it stays smooth
 const MOVING_FERMAT_POINTS = 250_000; // Fermat candidates tested per frame while moving
 const SETTLE_MS = 160; // idle time before redrawing at full detail
 const CANDIDATE_CAP = 1_500_000;
 const FERMAT_MAX = 2_000_000; // blocks of consecutive digits are not spatial on a Fermat spiral
-const MIN_SPACING_PX = 2.2; // closest dots may get, in CSS pixels
+const MIN_SPACING_DEVICE_PX = 0.75; // closest consecutive dots may get, in device pixels (about one dot per pixel)
 const MAX_ZOOM = 120; // CSS pixels per world unit
 const GOLDEN = Math.PI * (3 - Math.sqrt(5));
 const TWO_PI = Math.PI * 2;
@@ -269,7 +269,7 @@ export default function ViewSpiral({
         factor = LEVELS.find((f) => m >= f) ?? 1;
         k = BASE * Math.ceil(m / factor) * factor;
       } else {
-        k = Math.max(1, Math.ceil((MIN_SPACING_PX * dpr) / zd), Math.ceil(visible / blockCap));
+        k = Math.max(1, Math.ceil(MIN_SPACING_DEVICE_PX / zd), Math.ceil(visible / (blockCap * 1.1)));
       }
     }
 
@@ -310,7 +310,7 @@ export default function ViewSpiral({
         packed[i] = lut[idx & 1 ? v & 15 : v >> 4];
       }
     } else {
-      if (!work.counts || work.counts.length < n * 10) work.counts = new Uint16Array(Math.max(n, 1024) * 20);
+      if (!work.counts || work.counts.length < n * 10) work.counts = new Uint16Array(Math.ceil(Math.max(n, 1024) * 1.25) * 10);
       const counts = work.counts;
       counts.fill(0, 0, n * 10);
       for (let i = 0; i < n; i++) {
@@ -348,10 +348,18 @@ export default function ViewSpiral({
       sx[i] = x;
       sy[i] = y;
       if (big) continue;
-      if (rr <= 0.9) {
+      if (rr <= 0.7) {
         const ix = Math.round(x);
         const iy = Math.round(y);
         if (ix >= 0 && ix < Wd && iy >= 0 && iy < Hd) buf[iy * Wd + ix] = packed[i];
+      } else if (rr < 1.6) {
+        // About two pixels across: a 2x2 block, so a dense disc has no gaps
+        const ix = Math.floor(x);
+        const iy = Math.floor(y);
+        if (ix >= 0 && ix < Wd - 1 && iy >= 0 && iy < Hd - 1) {
+          const o = iy * Wd + ix;
+          buf[o] = buf[o + 1] = buf[o + Wd] = buf[o + Wd + 1] = packed[i];
+        }
       } else {
         const x0 = Math.max(0, Math.floor(x - rr));
         const x1 = Math.min(Wd - 1, Math.ceil(x + rr));
@@ -451,6 +459,17 @@ export default function ViewSpiral({
     (factor) => {
       const v = viewRef.current;
       v.z = clamp(v.z * factor, minZoom(), MAX_ZOOM);
+      setHovered(null);
+      markMoving();
+      scheduleDraw();
+    },
+    [scheduleDraw, markMoving]
+  );
+
+  // Zoom straight to a level (the slider), around the center
+  const zoomTo = useCallback(
+    (z) => {
+      viewRef.current.z = clamp(z, minZoom(), MAX_ZOOM);
       setHovered(null);
       markMoving();
       scheduleDraw();
@@ -581,6 +600,11 @@ export default function ViewSpiral({
 
   const digitsPerDot = info.k;
 
+  // Zoom slider position: 0 = whole spiral, 1 = closest, on a log scale so equal
+  // slider steps are equal zoom factors
+  const minZ = Math.max(1e-9, minZoom());
+  const zoomSlider = clamp(Math.log(info.zoom / minZ) / Math.log(MAX_ZOOM / minZ), 0, 1) || 0;
+
   return (
     <div className="flex flex-col rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl overflow-hidden mb-6">
       <div className="p-3 bg-slate-950/80 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
@@ -629,6 +653,17 @@ export default function ViewSpiral({
             <button onClick={() => zoomBy(1 / 1.3)} className="p-1 rounded hover:bg-slate-800 text-slate-300" title="Zoom Out">
               <ZoomOut className="w-3.5 h-3.5" />
             </button>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.0005"
+              value={zoomSlider}
+              onChange={(e) => zoomTo(minZ * (MAX_ZOOM / minZ) ** Number(e.target.value))}
+              className="w-28 sm:w-40 accent-purple-500"
+              aria-label="Zoom"
+              title="Zoom smoothly from the whole spiral to single digits"
+            />
             <span className="font-mono text-[11px] px-1 text-slate-400 min-w-[64px] text-center">
               {Math.round((info.zoom / Math.max(1e-9, minZoom())) * 100).toLocaleString()}%
             </span>
