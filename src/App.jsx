@@ -5,6 +5,7 @@ import SearchPanel from './components/SearchPanel';
 import ViewMosaic from './components/ViewMosaic';
 import ViewTextStream from './components/ViewTextStream';
 import ViewSpiral from './components/ViewSpiral';
+import ViewMorphSpiral from './components/ViewMorphSpiral';
 import ViewStats from './components/ViewStats';
 import AudioSonifier from './components/AudioSonifier';
 import ExportModal from './components/ExportModal';
@@ -45,6 +46,7 @@ export default function App() {
 
   // Active view mode: 'mosaic' | 'stream' | 'spiral' | 'stats'
   const [activeMode, setActiveMode] = useState('mosaic');
+  const [spiralKind, setSpiralKind] = useState('classic');
 
   // Palette & Color Customization
   const [activePaletteId, setActivePaletteId] = useState('spectral');
@@ -357,6 +359,26 @@ export default function App() {
           )}
 
           {activeMode === 'spiral' && (
+            <div className="flex gap-1 mb-3 text-xs">
+              {[['classic', 'Classic spiral'], ['morph', 'Zoom-morph spiral']].map(([k, label]) => (
+                <button
+                  key={k}
+                  onClick={() => setSpiralKind(k)}
+                  className={`px-3 py-1.5 rounded-lg border transition-colors ${
+                    spiralKind === k ? 'bg-purple-600/30 border-purple-500 text-purple-100' : 'bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-800'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {activeMode === 'spiral' && spiralKind === 'morph' && (
+            <ViewMorphSpiral store={store} colors={colors} isolatedDigit={isolatedDigit} />
+          )}
+
+          {activeMode === 'spiral' && spiralKind === 'classic' && (
             <ViewSpiral
               store={store}
               colorMode={colorMode}
