@@ -35,7 +35,7 @@ export default function PaletteBar({
   };
 
   return (
-    <div className="bg-slate-900/90 backdrop-blur-md border border-slate-800 rounded-2xl p-4 shadow-xl mb-4 transition-all">
+    <div className="relative z-40 bg-slate-900/90 backdrop-blur-md border border-slate-800 rounded-2xl p-4 shadow-xl mb-4 transition-all">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <div className="flex items-center gap-2">
           <div className="p-2 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
@@ -64,7 +64,7 @@ export default function PaletteBar({
             </button>
 
             {showDropdown && (
-              <div className="absolute right-0 mt-2 w-64 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-2 z-50 max-h-80 overflow-y-auto">
+              <div className="absolute right-0 mt-2 w-64 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-2 z-50 max-h-[70vh] overflow-y-auto">
                 <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider px-2 py-1 mb-1">
                   Color Themes
                 </div>
